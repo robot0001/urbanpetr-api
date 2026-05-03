@@ -17,11 +17,20 @@ import (
 )
 
 const (
-	appDB        = "urbanpetr_api"
 	userMigrator = "urbanpetr_api_migrator"
 	userApp      = "urbanpetr_api_app"
 	userReadonly = "readonly"
 )
+
+// appDB is the target database name. Overridable via DB_NAME for staging PR envs.
+var appDB = envOrDefault("DB_NAME", "urbanpetr_api")
+
+func envOrDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
 
 // provision bootstraps the app database, users, and privileges using master credentials.
 // Safe to call on every deploy — all operations are idempotent.
