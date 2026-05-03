@@ -189,6 +189,14 @@ jobs:
         with:
           terraform_version: 1.9.8
 
+      - name: Ensure placeholder zip exists
+        run: |
+          if ! aws s3 ls "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip" 2>/dev/null; then
+            touch /tmp/placeholder
+            zip /tmp/placeholder.zip /tmp/placeholder
+            aws s3 cp /tmp/placeholder.zip "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip"
+          fi
+
       - name: Terraform init
         working-directory: terraform/envs/prod
         run: terraform init -input=false
