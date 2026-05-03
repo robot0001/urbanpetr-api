@@ -189,6 +189,19 @@ jobs:
         with:
           terraform_version: 1.9.8
 
+      - name: Terraform init
+        working-directory: terraform/envs/prod
+        run: terraform init -input=false
+
+      - name: Terraform apply (artifacts bucket)
+        working-directory: terraform/envs/prod
+        run: |
+          terraform apply -auto-approve -input=false \
+            -target=module.api.aws_s3_bucket.artifacts \
+            -target=module.api.aws_s3_bucket_versioning.artifacts \
+            -target=module.api.aws_s3_bucket_lifecycle_configuration.artifacts \
+            -target=module.api.aws_s3_bucket_public_access_block.artifacts
+
       - name: Ensure placeholder zip exists
         run: |
           if ! aws s3 ls "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip" 2>/dev/null; then
@@ -196,10 +209,6 @@ jobs:
             zip /tmp/placeholder.zip /tmp/placeholder
             aws s3 cp /tmp/placeholder.zip "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip"
           fi
-
-      - name: Terraform init
-        working-directory: terraform/envs/prod
-        run: terraform init -input=false
 
       - name: Terraform apply
         working-directory: terraform/envs/prod
