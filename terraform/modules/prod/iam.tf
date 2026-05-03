@@ -23,9 +23,9 @@ resource "aws_iam_role_policy_attachment" "api_lambda_vpc" {
 
 data "aws_iam_policy_document" "api_lambda" {
   statement {
-    sid     = "ReadAppSecret"
-    effect  = "Allow"
-    actions = ["secretsmanager:GetSecretValue"]
+    sid       = "ReadAppSecret"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
     resources = [aws_secretsmanager_secret.db_app.arn]
   }
 }
@@ -50,9 +50,9 @@ resource "aws_iam_role_policy_attachment" "migrations_lambda_vpc" {
 
 data "aws_iam_policy_document" "migrations_lambda" {
   statement {
-    sid     = "ReadMasterSecret"
-    effect  = "Allow"
-    actions = ["secretsmanager:GetSecretValue"]
+    sid       = "ReadMasterSecret"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
     resources = [local.rds_master_secret_arn]
   }
 
