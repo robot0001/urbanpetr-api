@@ -5,6 +5,9 @@ import (
 	"log"
 	"os"
 
+	"github.com/aws/aws-lambda-go/lambda"
+	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
+	"github.com/robot0001/urbanpetr-api/internal/handler"
 	"github.com/robot0001/urbanpetr-api/internal/migrate"
 )
 
@@ -15,8 +18,12 @@ func main() {
 		if err := migrate.Run(context.Background()); err != nil {
 			log.Fatalf("migration failed: %v", err)
 		}
+	case "seed":
+		// implemented in step 8
+		log.Fatal("seed mode not implemented yet")
 	default:
-		// HTTP/Lambda mode — implemented in step 5
-		log.Fatal("LAMBDA_HANDLER_MODE not set to a recognised value")
+		r := handler.NewRouter()
+		adapter := chiadapter.New(r)
+		lambda.Start(adapter.ProxyWithContext)
 	}
 }
