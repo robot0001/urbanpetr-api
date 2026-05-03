@@ -41,10 +41,9 @@ jobs:
       - name: Terraform fmt check
         run: terraform fmt -check -recursive terraform/
 
-      - name: Install tflint
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | \
-            TFLINT_VERSION=v0.50.3 bash -s -- -b /usr/local/bin
+      - uses: terraform-linters/setup-tflint@v6
+        with:
+          tflint_version: v0.50.3
 
       - name: tflint init
         run: tflint --init
