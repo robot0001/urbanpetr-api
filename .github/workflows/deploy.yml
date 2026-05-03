@@ -51,7 +51,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: tflint
-        run: tflint --recursive terraform/
+        run: |
+          find terraform -name "*.tf" -exec dirname {} \; | sort -u | while IFS= read -r dir; do
+            echo "--- tflint: $dir"
+            tflint --chdir "$dir" || exit 1
+          done
 
   test:
     name: Test
