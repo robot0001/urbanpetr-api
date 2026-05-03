@@ -9,6 +9,7 @@ import (
 	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
 	"github.com/robot0001/urbanpetr-api/internal/handler"
 	"github.com/robot0001/urbanpetr-api/internal/migrate"
+	"github.com/robot0001/urbanpetr-api/internal/seed"
 )
 
 func main() {
@@ -19,8 +20,9 @@ func main() {
 			log.Fatalf("migration failed: %v", err)
 		}
 	case "seed":
-		// implemented in step 8
-		log.Fatal("seed mode not implemented yet")
+		if err := seed.Run(context.Background()); err != nil {
+			log.Fatalf("seed failed: %v", err)
+		}
 	default:
 		r := handler.NewRouter()
 		adapter := chiadapter.New(r)
