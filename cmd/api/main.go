@@ -24,7 +24,7 @@ func main() {
 		})
 	default:
 		r := handler.NewRouter()
-		adapter := chiadapter.New(r)
-		lambda.Start(adapter.ProxyWithContext)
+		adapter := chiadapter.NewV2(r)
+		lambda.Start(adapter.ProxyWithContextV2)
 	}
 }
