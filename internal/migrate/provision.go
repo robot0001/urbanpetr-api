@@ -110,13 +110,16 @@ func ensureUserSecret(ctx context.Context, sm *secretsmanager.Client, arn, usern
 		return "", err
 	}
 
-	value, _ := json.Marshal(config.DBCredentials{
+	value, err := json.Marshal(config.DBCredentials{
 		Host:     master.Host,
 		Port:     master.Port,
 		DBName:   dbname,
 		Username: username,
 		Password: password,
 	})
+	if err != nil {
+		return "", fmt.Errorf("encode credentials for %s: %w", username, err)
+	}
 	if _, err := sm.PutSecretValue(ctx, &secretsmanager.PutSecretValueInput{
 		SecretId:     aws.String(arn),
 		SecretString: aws.String(string(value)),
