@@ -3,6 +3,8 @@ locals {
   private_subnet_ids    = data.terraform_remote_state.platform.outputs.private_subnet_ids
   rds_security_group_id = data.terraform_remote_state.platform.outputs.rds_security_group_id
   rds_master_secret_arn = data.terraform_remote_state.platform.outputs.rds_master_secret_arn
+  rds_host              = data.terraform_remote_state.platform.outputs.rds_endpoint
+  rds_port              = data.terraform_remote_state.platform.outputs.rds_port
 
   zone_id    = data.terraform_remote_state.foundation.outputs.prod_zone_id
   api_domain = "api.${var.domain_name}"

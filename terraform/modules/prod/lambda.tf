@@ -13,6 +13,8 @@ module "api_lambda" {
 
   environment_variables = {
     DB_SECRET_ARN       = aws_secretsmanager_secret.db_app.arn
+    DB_HOST             = local.rds_host
+    DB_PORT             = tostring(local.rds_port)
     LAMBDA_HANDLER_MODE = "api"
   }
 
@@ -38,6 +40,8 @@ module "migrations_lambda" {
     DB_MIGRATOR_SECRET_ARN = aws_secretsmanager_secret.db_migrator.arn
     DB_SECRET_ARN          = aws_secretsmanager_secret.db_app.arn
     DB_READONLY_SECRET_ARN = aws_secretsmanager_secret.db_readonly.arn
+    DB_HOST                = local.rds_host
+    DB_PORT                = tostring(local.rds_port)
     LAMBDA_HANDLER_MODE    = "migrate"
   }
 
