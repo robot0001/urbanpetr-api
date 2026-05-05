@@ -13,6 +13,43 @@ provider "aws" {
   region = "eu-central-1"
 }
 
+data "terraform_remote_state" "platform" {
+  backend = "s3"
+  config = {
+    bucket = "urbanpetr-tf-state-staging"
+    key    = "platform/staging/terraform.tfstate"
+    region = "eu-central-1"
+  }
+}
+
+# Shared Lambda security group reused by all PR staging environments.
+# Avoids the ~15 min ENI detach wait on terraform destroy per PR.
+resource "aws_security_group" "staging_lambda" {
+  name        = "urbanpetr-api-staging-lambda"
+  description = "Shared Lambda SG for all PR staging environments"
+  vpc_id      = data.terraform_remote_state.platform.outputs.vpc_id
+
+  tags = {
+    Project     = "urbanpetr-api"
+    Environment = "staging"
+  }
+}
+
+resource "aws_vpc_security_group_egress_rule" "staging_lambda_all" {
+  security_group_id = aws_security_group.staging_lambda.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+resource "aws_vpc_security_group_ingress_rule" "staging_lambda_to_rds" {
+  security_group_id            = data.terraform_remote_state.platform.outputs.rds_security_group_id
+  referenced_security_group_id = aws_security_group.staging_lambda.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "urbanpetr-api staging Lambdas to RDS"
+}
+
 # Placeholder secrets shared across all PR staging environments.
 # provision.go fills in the values on first migrate run.
 
