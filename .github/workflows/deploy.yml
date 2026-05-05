@@ -134,7 +134,7 @@ jobs:
           zip -j lambda.zip bootstrap
           zip -r lambda.zip migrations/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: lambda-zip
           path: lambda.zip
@@ -156,7 +156,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v5
         with:
           name: lambda-zip
 
