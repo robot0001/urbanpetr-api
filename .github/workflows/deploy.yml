@@ -132,6 +132,7 @@ jobs:
         run: |
           GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bootstrap ./cmd/api
           zip -j lambda.zip bootstrap
+          zip -r lambda.zip migrations/
 
       - uses: actions/upload-artifact@v4
         with:
