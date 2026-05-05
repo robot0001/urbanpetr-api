@@ -14,6 +14,8 @@ module "api_lambda" {
   environment_variables = {
     DB_SECRET_ARN       = data.aws_secretsmanager_secret.db_app.arn
     DB_NAME             = local.db_name
+    DB_HOST             = local.rds_host
+    DB_PORT             = local.rds_port
     LAMBDA_HANDLER_MODE = "api"
   }
 
@@ -40,6 +42,8 @@ module "migrations_lambda" {
     DB_SECRET_ARN          = data.aws_secretsmanager_secret.db_app.arn
     DB_READONLY_SECRET_ARN = data.aws_secretsmanager_secret.db_readonly.arn
     DB_NAME                = local.db_name
+    DB_HOST                = local.rds_host
+    DB_PORT                = local.rds_port
     LAMBDA_HANDLER_MODE    = "migrate"
   }
 
@@ -63,6 +67,8 @@ module "seed_lambda" {
   environment_variables = {
     DB_SECRET_ARN       = data.aws_secretsmanager_secret.db_app.arn
     DB_NAME             = local.db_name
+    DB_HOST             = local.rds_host
+    DB_PORT             = local.rds_port
     LAMBDA_HANDLER_MODE = "seed"
   }
 
