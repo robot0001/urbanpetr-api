@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -19,20 +20,26 @@ type DBCredentials struct {
 
 // DSN returns a postgres:// DSN, overriding the stored dbname if dbname is non-empty.
 func (c *DBCredentials) DSN(dbname string) string {
-	db := c.DBName
-	if dbname != "" {
-		db = dbname
-	}
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s", c.Username, c.Password, c.Host, c.Port, db)
+	return c.dsn("postgres", dbname)
 }
 
 // MigrateDSN returns a pgx5:// DSN for use with golang-migrate.
 func (c *DBCredentials) MigrateDSN(dbname string) string {
+	return c.dsn("pgx5", dbname)
+}
+
+func (c *DBCredentials) dsn(scheme, dbname string) string {
 	db := c.DBName
 	if dbname != "" {
 		db = dbname
 	}
-	return fmt.Sprintf("pgx5://%s:%s@%s:%d/%s", c.Username, c.Password, c.Host, c.Port, db)
+	u := url.URL{
+		Scheme: scheme,
+		User:   url.UserPassword(c.Username, c.Password),
+		Host:   fmt.Sprintf("%s:%d", c.Host, c.Port),
+		Path:   db,
+	}
+	return u.String()
 }
 
 func GetSecret(ctx context.Context, sm *secretsmanager.Client, arn string) (*DBCredentials, error) {
