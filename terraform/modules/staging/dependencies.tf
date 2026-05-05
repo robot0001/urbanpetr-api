@@ -19,3 +19,9 @@ data "aws_secretsmanager_secret" "db_migrator" {
 data "aws_secretsmanager_secret" "db_readonly" {
   name = "urbanpetr/staging/rds/readonly"
 }
+
+data "aws_acm_certificate" "wildcard" {
+  domain      = "*.urbanpetr.com"
+  statuses    = ["ISSUED"]
+  most_recent = true
+}
