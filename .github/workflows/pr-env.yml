@@ -112,20 +112,53 @@ jobs:
             exit 1
           fi
 
-      - name: Get API URL
-        id: api_url
+      - name: Get API Gateway DNS info
         working-directory: terraform/envs/staging
-        run: echo "value=$(terraform output -raw api_url)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "API_GW_TARGET=$(terraform output -raw api_gateway_target_domain)" >> "$GITHUB_ENV"
+          echo "API_GW_ZONE=$(terraform output -raw api_gateway_hosted_zone_id)" >> "$GITHUB_ENV"
+          echo "CUSTOM_DOMAIN_URL=$(terraform output -raw custom_domain_url)" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials (prod — Route53)
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upsert Route53 DNS record
+        env:
+          PR: ${{ github.event.number }}
+        run: |
+          ZONE_ID=$(aws route53 list-hosted-zones-by-name \
+            --dns-name "urbanpetr.com." \
+            --query "HostedZones[?Name=='urbanpetr.com.'].Id" \
+            --output text | sed 's|/hostedzone/||')
+          aws route53 change-resource-record-sets \
+            --hosted-zone-id "$ZONE_ID" \
+            --change-batch "{
+              \"Changes\": [{
+                \"Action\": \"UPSERT\",
+                \"ResourceRecordSet\": {
+                  \"Name\": \"api-stage${PR}.urbanpetr.com\",
+                  \"Type\": \"A\",
+                  \"AliasTarget\": {
+                    \"HostedZoneId\": \"${API_GW_ZONE}\",
+                    \"DNSName\": \"${API_GW_TARGET}\",
+                    \"EvaluateTargetHealth\": false
+                  }
+                }
+              }]
+            }"
 
       - name: Post staging URL to PR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh pr comment ${{ github.event.number }} \
-            --body "**Staging env ready** \`${{ steps.api_url.outputs.value }}/health\`" \
+            --body "**Staging env ready** \`${{ env.CUSTOM_DOMAIN_URL }}/health\`" \
             --edit-last \
             || gh pr comment ${{ github.event.number }} \
-              --body "**Staging env ready** \`${{ steps.api_url.outputs.value }}/health\`"
+              --body "**Staging env ready** \`${{ env.CUSTOM_DOMAIN_URL }}/health\`"
 
   destroy:
     name: Destroy PR env
@@ -167,6 +200,53 @@ jobs:
         run: |
           terraform init -input=false \
             -backend-config="key=urbanpetr_api/pr-${{ github.event.number }}/terraform.tfstate"
+
+      - name: Get API Gateway DNS info
+        if: steps.check.outputs.exists == 'true'
+        working-directory: terraform/envs/staging
+        run: |
+          echo "API_GW_TARGET=$(terraform output -raw api_gateway_target_domain)" >> "$GITHUB_ENV"
+          echo "API_GW_ZONE=$(terraform output -raw api_gateway_hosted_zone_id)" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials (prod — Route53)
+        if: steps.check.outputs.exists == 'true'
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Delete Route53 DNS record
+        if: steps.check.outputs.exists == 'true'
+        env:
+          PR: ${{ github.event.number }}
+        run: |
+          ZONE_ID=$(aws route53 list-hosted-zones-by-name \
+            --dns-name "urbanpetr.com." \
+            --query "HostedZones[?Name=='urbanpetr.com.'].Id" \
+            --output text | sed 's|/hostedzone/||')
+          aws route53 change-resource-record-sets \
+            --hosted-zone-id "$ZONE_ID" \
+            --change-batch "{
+              \"Changes\": [{
+                \"Action\": \"DELETE\",
+                \"ResourceRecordSet\": {
+                  \"Name\": \"api-stage${PR}.urbanpetr.com\",
+                  \"Type\": \"A\",
+                  \"AliasTarget\": {
+                    \"HostedZoneId\": \"${API_GW_ZONE}\",
+                    \"DNSName\": \"${API_GW_TARGET}\",
+                    \"EvaluateTargetHealth\": false
+                  }
+                }
+              }]
+            }" || true
+
+      - name: Configure AWS credentials (staging — destroy)
+        if: steps.check.outputs.exists == 'true'
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform destroy
         if: steps.check.outputs.exists == 'true'
