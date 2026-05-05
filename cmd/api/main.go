@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -16,13 +15,13 @@ func main() {
 	mode := os.Getenv("LAMBDA_HANDLER_MODE")
 	switch mode {
 	case "migrate":
-		if err := migrate.Run(context.Background()); err != nil {
-			log.Fatalf("migration failed: %v", err)
-		}
+		lambda.Start(func(ctx context.Context) error {
+			return migrate.Run(ctx)
+		})
 	case "seed":
-		if err := seed.Run(context.Background()); err != nil {
-			log.Fatalf("seed failed: %v", err)
-		}
+		lambda.Start(func(ctx context.Context) error {
+			return seed.Run(ctx)
+		})
 	default:
 		r := handler.NewRouter()
 		adapter := chiadapter.New(r)
