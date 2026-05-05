@@ -205,8 +205,7 @@ jobs:
       - name: Ensure placeholder zip exists
         run: |
           if ! aws s3 ls "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip" 2>/dev/null; then
-            touch /tmp/placeholder
-            zip /tmp/placeholder.zip /tmp/placeholder
+            python3 -c 'import zipfile; z=zipfile.ZipFile("/tmp/placeholder.zip","w"); z.writestr("bootstrap","placeholder"); z.close()'
             aws s3 cp /tmp/placeholder.zip "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip"
           fi
 

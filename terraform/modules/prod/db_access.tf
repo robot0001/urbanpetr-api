@@ -5,7 +5,7 @@ resource "aws_vpc_security_group_ingress_rule" "api_lambda_to_rds" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  description                  = "urbanpetr-api Lambda -> RDS"
+  description                  = "urbanpetr-api Lambda to RDS"
 
   tags = local.common_tags
 }
@@ -16,7 +16,7 @@ resource "aws_vpc_security_group_ingress_rule" "migrations_lambda_to_rds" {
   from_port                    = 5432
   to_port                      = 5432
   ip_protocol                  = "tcp"
-  description                  = "urbanpetr-api migrations Lambda -> RDS"
+  description                  = "urbanpetr-api migrations Lambda to RDS"
 
   tags = local.common_tags
 }
