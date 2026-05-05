@@ -55,11 +55,13 @@ func provision(ctx context.Context, sm *secretsmanager.Client, master *config.DB
 		{"DB_SECRET_ARN", userApp, appDB},
 	}
 
+	passwords := make(map[string]string, len(users))
 	for _, u := range users {
 		password, err := ensureUserSecret(ctx, sm, os.Getenv(u.arnEnv), u.username, u.dbname, master)
 		if err != nil {
 			return fmt.Errorf("ensure secret for %s: %w", u.username, err)
 		}
+		passwords[u.username] = password
 		if err := ensureUser(ctx, clusterConn, u.username, password); err != nil {
 			return fmt.Errorf("ensure pg user %s: %w", u.username, err)
 		}
@@ -74,7 +76,23 @@ func provision(ctx context.Context, sm *secretsmanager.Client, master *config.DB
 	}
 	defer appConn.Close(ctx)
 
-	return applySchemaGrants(ctx, appConn)
+	if err := applyExplicitGrants(ctx, appConn); err != nil {
+		return err
+	}
+
+	// ALTER DEFAULT PRIVILEGES must run as the migrator user: RDS master is not
+	// a superuser and cannot alter default privileges for another role.
+	migratorCreds := config.DBCredentials{
+		Host: master.Host, Port: master.Port,
+		DBName: appDB, Username: userMigrator, Password: passwords[userMigrator],
+	}
+	migratorConn, err := pgx.Connect(ctx, migratorCreds.DSN(""))
+	if err != nil {
+		return fmt.Errorf("connect as migrator: %w", err)
+	}
+	defer migratorConn.Close(ctx)
+
+	return applyDefaultPrivileges(ctx, migratorConn)
 }
 
 func createDatabaseIfNotExists(ctx context.Context, conn *pgx.Conn, dbname string) error {
@@ -152,37 +170,50 @@ func grantConnect(ctx context.Context, conn *pgx.Conn, dbname, username string) 
 	return err
 }
 
-func applySchemaGrants(ctx context.Context, conn *pgx.Conn) error {
+// applyExplicitGrants runs as master: grants schema usage and privileges on
+// already-existing objects to app/readonly/migrator users.
+func applyExplicitGrants(ctx context.Context, conn *pgx.Conn) error {
 	m := pgx.Identifier{userMigrator}.Sanitize()
 	a := pgx.Identifier{userApp}.Sanitize()
 	r := pgx.Identifier{userReadonly}.Sanitize()
 
 	stmts := []string{
-		// Migrator: full schema ownership
 		fmt.Sprintf("GRANT CREATE, USAGE ON SCHEMA public TO %s", m),
 		fmt.Sprintf("GRANT ALL ON ALL TABLES IN SCHEMA public TO %s", m),
 		fmt.Sprintf("GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO %s", m),
 		fmt.Sprintf("GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO %s", m),
 
-		// Default privileges: objects created by migrator are automatically accessible
-		fmt.Sprintf("ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT ALL ON TABLES TO %s", m, m),
-		fmt.Sprintf("ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT ALL ON SEQUENCES TO %s", m, m),
-		fmt.Sprintf("ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %s", m, a),
-		fmt.Sprintf("ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT USAGE ON SEQUENCES TO %s", m, a),
-		fmt.Sprintf("ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO %s", m, a),
-		fmt.Sprintf("ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT SELECT ON TABLES TO %s", m, r),
-		fmt.Sprintf("ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT SELECT ON SEQUENCES TO %s", m, r),
-
-		// App: DML + execute on existing objects
 		fmt.Sprintf("GRANT USAGE ON SCHEMA public TO %s", a),
 		fmt.Sprintf("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %s", a),
 		fmt.Sprintf("GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO %s", a),
 		fmt.Sprintf("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO %s", a),
 
-		// Readonly: select only on existing objects
 		fmt.Sprintf("GRANT USAGE ON SCHEMA public TO %s", r),
 		fmt.Sprintf("GRANT SELECT ON ALL TABLES IN SCHEMA public TO %s", r),
 		fmt.Sprintf("GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO %s", r),
+	}
+
+	for _, stmt := range stmts {
+		if _, err := conn.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("grant failed (%s): %w", stmt, err)
+		}
+	}
+	return nil
+}
+
+// applyDefaultPrivileges runs as the migrator user so that objects it creates
+// in future migrations are automatically accessible to app/readonly users.
+// FOR ROLE is omitted — it defaults to the current user (migrator).
+func applyDefaultPrivileges(ctx context.Context, conn *pgx.Conn) error {
+	a := pgx.Identifier{userApp}.Sanitize()
+	r := pgx.Identifier{userReadonly}.Sanitize()
+
+	stmts := []string{
+		fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %s", a),
+		fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SEQUENCES TO %s", a),
+		fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO %s", a),
+		fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO %s", r),
+		fmt.Sprintf("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO %s", r),
 	}
 
 	for _, stmt := range stmts {
