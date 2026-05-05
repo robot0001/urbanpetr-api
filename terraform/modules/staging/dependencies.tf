@@ -25,3 +25,8 @@ data "aws_acm_certificate" "wildcard" {
   statuses    = ["ISSUED"]
   most_recent = true
 }
+
+data "aws_security_group" "staging_lambda" {
+  name   = "urbanpetr-api-staging-lambda"
+  vpc_id = local.vpc_id
+}

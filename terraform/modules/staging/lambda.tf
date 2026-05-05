@@ -1,5 +1,5 @@
 module "api_lambda" {
-  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.0.0"
+  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.0.2"
 
   function_name      = local.name_prefix
   package_type       = "Zip"
@@ -7,7 +7,7 @@ module "api_lambda" {
   handler            = "bootstrap"
   s3_bucket          = "urbanpetr-artifacts-staging"
   s3_key             = "urbanpetr-api/placeholder.zip"
-  vpc_id             = local.vpc_id
+  security_group_ids = [data.aws_security_group.staging_lambda.id]
   subnet_ids         = local.private_subnet_ids
   execution_role_arn = aws_iam_role.api_lambda.arn
 
@@ -23,7 +23,7 @@ module "api_lambda" {
 }
 
 module "migrations_lambda" {
-  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.0.0"
+  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.0.2"
 
   function_name      = "${local.name_prefix}-migrations"
   package_type       = "Zip"
@@ -32,7 +32,7 @@ module "migrations_lambda" {
   s3_bucket          = "urbanpetr-artifacts-staging"
   s3_key             = "urbanpetr-api/placeholder.zip"
   timeout            = 300
-  vpc_id             = local.vpc_id
+  security_group_ids = [data.aws_security_group.staging_lambda.id]
   subnet_ids         = local.private_subnet_ids
   execution_role_arn = aws_iam_role.migrations_lambda.arn
 
@@ -51,7 +51,7 @@ module "migrations_lambda" {
 }
 
 module "seed_lambda" {
-  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.0.0"
+  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.0.2"
 
   function_name      = "${local.name_prefix}-seed"
   package_type       = "Zip"
@@ -60,7 +60,7 @@ module "seed_lambda" {
   s3_bucket          = "urbanpetr-artifacts-staging"
   s3_key             = "urbanpetr-api/placeholder.zip"
   timeout            = 300
-  vpc_id             = local.vpc_id
+  security_group_ids = [data.aws_security_group.staging_lambda.id]
   subnet_ids         = local.private_subnet_ids
   execution_role_arn = aws_iam_role.seed_lambda.arn
 
