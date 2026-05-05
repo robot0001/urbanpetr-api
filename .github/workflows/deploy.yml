@@ -202,12 +202,10 @@ jobs:
             -target=module.api.aws_s3_bucket_lifecycle_configuration.artifacts \
             -target=module.api.aws_s3_bucket_public_access_block.artifacts
 
-      - name: Ensure placeholder zip exists
+      - name: Upload placeholder zip
         run: |
-          if ! aws s3 ls "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip" 2>/dev/null; then
-            python3 -c 'import zipfile; z=zipfile.ZipFile("/tmp/placeholder.zip","w"); z.writestr("bootstrap","placeholder"); z.close()'
-            aws s3 cp /tmp/placeholder.zip "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip"
-          fi
+          python3 -c 'import zipfile; z=zipfile.ZipFile("/tmp/placeholder.zip","w"); z.writestr("bootstrap","placeholder"); z.close()'
+          aws s3 cp /tmp/placeholder.zip "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip"
 
       - name: Terraform apply
         working-directory: terraform/envs/prod
