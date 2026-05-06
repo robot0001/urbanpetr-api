@@ -32,3 +32,8 @@ output "api_gateway_hosted_zone_id" {
   value       = module.api_gateway.custom_domain_hosted_zone_id
   description = "Hosted zone ID for the Route53 ALIAS record."
 }
+
+output "api_gateway_log_group_arn" {
+  value       = aws_cloudwatch_log_group.api_gateway.arn
+  description = "ARN of the API Gateway access log group — passed to api_gateway module in PR 4."
+}
