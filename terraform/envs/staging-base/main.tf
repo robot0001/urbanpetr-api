@@ -83,6 +83,29 @@ resource "aws_secretsmanager_secret" "db_readonly" {
   }
 }
 
+# Account-level policy allowing API Gateway to deliver access logs to CloudWatch.
+# Must live here (not in the per-PR staging module) because it is account-scoped.
+resource "aws_cloudwatch_log_resource_policy" "api_gateway_logging" {
+  policy_name = "urbanpetr-api-gateway-logging"
+  policy_document = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "delivery.logs.amazonaws.com" }
+      Action = [
+        "logs:CreateLogDelivery",
+        "logs:PutLogEvents",
+        "logs:GetLogDelivery",
+        "logs:UpdateLogDelivery",
+        "logs:DeleteLogDelivery",
+        "logs:DescribeLogGroups",
+        "logs:DescribeResourcePolicies",
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
 # Wildcard cert for api-stage{N}.urbanpetr.com custom domains on PR envs.
 # After applying, add the CNAME from wildcard_cert_validation_cname output to
 # Route53 in Account A (one-time). The cert auto-validates and stays ISSUED.
