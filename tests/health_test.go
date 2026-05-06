@@ -1,15 +1,21 @@
 package tests
 
 import (
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/robot0001/urbanpetr-api/internal/handler"
 )
 
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("app", "urbanpetr-api", "env", "test")
+}
+
 func TestHealthHandler(t *testing.T) {
-	r := handler.NewRouter()
+	r := handler.NewRouter(testLogger())
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -21,7 +27,7 @@ func TestHealthHandler(t *testing.T) {
 
 func preflight(t *testing.T, origin string) *httptest.ResponseRecorder {
 	t.Helper()
-	r := handler.NewRouter()
+	r := handler.NewRouter(testLogger())
 	req := httptest.NewRequest(http.MethodOptions, "/health", nil)
 	req.Header.Set("Origin", origin)
 	req.Header.Set("Access-Control-Request-Method", "GET")

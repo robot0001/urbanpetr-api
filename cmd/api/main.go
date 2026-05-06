@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -12,6 +13,18 @@ import (
 )
 
 func main() {
+	appName := os.Getenv("APP_NAME")
+	if appName == "" {
+		appName = "urbanpetr-api"
+	}
+	env := os.Getenv("ENVIRONMENT")
+	if env == "" {
+		env = "unknown"
+	}
+
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).
+		With("app", appName, "env", env)
+
 	mode := os.Getenv("LAMBDA_HANDLER_MODE")
 	switch mode {
 	case "migrate":
@@ -23,7 +36,7 @@ func main() {
 			return seed.Run(ctx)
 		})
 	default:
-		r := handler.NewRouter()
+		r := handler.NewRouter(log)
 		adapter := chiadapter.NewV2(r)
 		lambda.Start(adapter.ProxyWithContextV2)
 	}
