@@ -1,14 +1,3 @@
-# Lambda auto-creates these log groups on first invocation — import adopts them.
-import {
-  to = aws_cloudwatch_log_group.api_lambda
-  id = "/aws/lambda/urbanpetr-api-prod"
-}
-
-import {
-  to = aws_cloudwatch_log_group.migrations_lambda
-  id = "/aws/lambda/urbanpetr-api-prod-migrations"
-}
-
 resource "aws_cloudwatch_log_group" "api_lambda" {
   name              = "/aws/lambda/urbanpetr-api-prod"
   retention_in_days = 7
