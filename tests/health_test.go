@@ -19,18 +19,44 @@ func TestHealthHandler(t *testing.T) {
 	}
 }
 
-func TestHealthHandlerCORSPreflight(t *testing.T) {
+func preflight(t *testing.T, origin string) *httptest.ResponseRecorder {
+	t.Helper()
 	r := handler.NewRouter()
 	req := httptest.NewRequest(http.MethodOptions, "/health", nil)
-	req.Header.Set("Origin", "https://urbanpetr.com")
+	req.Header.Set("Origin", origin)
 	req.Header.Set("Access-Control-Request-Method", "GET")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
+	return w
+}
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200 preflight, got %d", w.Code)
+func TestHealthHandlerCORSAllowed(t *testing.T) {
+	origins := []string{
+		"https://urbanpetr.com",
+		"https://stage1.urbanpetr.com",
 	}
-	if w.Header().Get("Access-Control-Allow-Origin") != "https://urbanpetr.com" {
-		t.Fatal("missing CORS allow-origin header")
+	for _, origin := range origins {
+		t.Run(origin, func(t *testing.T) {
+			w := preflight(t, origin)
+			if w.Header().Get("Access-Control-Allow-Origin") != origin {
+				t.Fatalf("expected CORS header for %s, got %q", origin, w.Header().Get("Access-Control-Allow-Origin"))
+			}
+		})
+	}
+}
+
+func TestHealthHandlerCORSBlocked(t *testing.T) {
+	origins := []string{
+		"https://example.com",
+		"http://urbanpetr.com",            // wrong scheme
+		"https://urbanpetr.com.evil.com",  // subdomain spoofing
+	}
+	for _, origin := range origins {
+		t.Run(origin, func(t *testing.T) {
+			w := preflight(t, origin)
+			if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+				t.Fatalf("expected no CORS header for %s, got %q", origin, got)
+			}
+		})
 	}
 }
