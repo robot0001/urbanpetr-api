@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -15,8 +16,12 @@ func NewRouter(log *slog.Logger) *chi.Mux {
 	r.Use(middleware.RequestID)
 	r.Use(requestLogger(log))
 	r.Use(recoverer(log))
+	allowedOrigins := []string{"https://urbanpetr.com", "https://*.urbanpetr.com"}
+	if os.Getenv("ENVIRONMENT") == "local" {
+		allowedOrigins = append(allowedOrigins, "http://localhost:3000")
+	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"https://urbanpetr.com", "https://*.urbanpetr.com"},
+		AllowedOrigins: allowedOrigins,
 		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
 		MaxAge:         300,

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -25,18 +26,43 @@ func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil)).
 		With("app", appName, "env", env)
 
+	local := os.Getenv("LOCAL_HTTP_MODE") == "true"
+	ctx := context.Background()
+
 	mode := os.Getenv("LAMBDA_HANDLER_MODE")
 	switch mode {
 	case "migrate":
+		if local {
+			if err := migrate.Run(ctx); err != nil {
+				log.Error("migrate failed", "error", err)
+				os.Exit(1)
+			}
+			return
+		}
 		lambda.Start(func(ctx context.Context) error {
 			return migrate.Run(ctx)
 		})
 	case "seed":
+		if local {
+			if err := seed.Run(ctx); err != nil {
+				log.Error("seed failed", "error", err)
+				os.Exit(1)
+			}
+			return
+		}
 		lambda.Start(func(ctx context.Context) error {
 			return seed.Run(ctx)
 		})
 	default:
 		r := handler.NewRouter(log)
+		if local {
+			log.Info("starting local HTTP server", "addr", ":8080")
+			if err := http.ListenAndServe(":8080", r); err != nil {
+				log.Error("server failed", "error", err)
+				os.Exit(1)
+			}
+			return
+		}
 		adapter := chiadapter.NewV2(r)
 		lambda.Start(adapter.ProxyWithContextV2)
 	}

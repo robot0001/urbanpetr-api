@@ -50,14 +50,31 @@ func (c *DBCredentials) dsn(scheme, dbname string) string {
 	if dbname != "" {
 		db = dbname
 	}
+	sslmode := "require"
+	if os.Getenv("ENVIRONMENT") == "local" {
+		sslmode = "disable"
+	}
 	u := url.URL{
 		Scheme:   scheme,
 		User:     url.UserPassword(c.Username, c.Password),
 		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
 		Path:     db,
-		RawQuery: "sslmode=require",
+		RawQuery: "sslmode=" + sslmode,
 	}
 	return u.String()
+}
+
+// GetCredentialsFromEnv builds DBCredentials from plain env vars.
+// Used when USE_ENV_CREDENTIALS=true (local Docker dev, no Secrets Manager).
+func GetCredentialsFromEnv() *DBCredentials {
+	port, _ := strconv.Atoi(os.Getenv("DB_PORT"))
+	return &DBCredentials{
+		Host:     os.Getenv("DB_HOST"),
+		Port:     port,
+		DBName:   os.Getenv("DB_NAME"),
+		Username: os.Getenv("DB_USER"),
+		Password: os.Getenv("DB_PASSWORD"),
+	}
 }
 
 func GetSecret(ctx context.Context, sm *secretsmanager.Client, arn string) (*DBCredentials, error) {
