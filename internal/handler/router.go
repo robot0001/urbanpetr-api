@@ -21,7 +21,7 @@ func NewRouter(log *slog.Logger) *chi.Mux {
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
 		MaxAge:         300,
 	}))
-	r.Get("/health", HealthHandler)
+	r.Get("/health", HealthHandler(log))
 	return r
 }
 
