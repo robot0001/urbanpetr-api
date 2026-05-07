@@ -14,7 +14,12 @@ import (
 )
 
 // Run provisions DB users then applies pending SQL migrations using migrator credentials.
+// When USE_ENV_CREDENTIALS=true (local Docker), skips provisioning and AWS entirely.
 func Run(ctx context.Context) error {
+	if os.Getenv("USE_ENV_CREDENTIALS") == "true" {
+		return runLocal()
+	}
+
 	cfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("load aws config: %w", err)
@@ -41,6 +46,19 @@ func Run(ctx context.Context) error {
 	}
 	defer m.Close()
 
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("run migrations: %w", err)
+	}
+	return nil
+}
+
+func runLocal() error {
+	creds := config.GetCredentialsFromEnv()
+	m, err := migrate.New("file://migrations", creds.MigrateDSN(appDB))
+	if err != nil {
+		return fmt.Errorf("init migrate: %w", err)
+	}
+	defer m.Close()
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("run migrations: %w", err)
 	}
