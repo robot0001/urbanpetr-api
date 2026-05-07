@@ -14,6 +14,7 @@ import (
 func NewRouter(log *slog.Logger) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(middleware.Compress(5))
 	r.Use(requestLogger(log))
 	r.Use(recoverer(log))
 	allowedOrigins := []string{"https://urbanpetr.com", "https://*.urbanpetr.com"}
