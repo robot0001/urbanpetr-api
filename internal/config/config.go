@@ -51,10 +51,11 @@ func (c *DBCredentials) dsn(scheme, dbname string) string {
 		db = dbname
 	}
 	u := url.URL{
-		Scheme: scheme,
-		User:   url.UserPassword(c.Username, c.Password),
-		Host:   fmt.Sprintf("%s:%d", c.Host, c.Port),
-		Path:   db,
+		Scheme:   scheme,
+		User:     url.UserPassword(c.Username, c.Password),
+		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
+		Path:     db,
+		RawQuery: "sslmode=require",
 	}
 	return u.String()
 }
