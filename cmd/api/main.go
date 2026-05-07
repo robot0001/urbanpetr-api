@@ -57,7 +57,10 @@ func main() {
 		r := handler.NewRouter(log)
 		if local {
 			log.Info("starting local HTTP server", "addr", ":8080")
-			http.ListenAndServe(":8080", r)
+			if err := http.ListenAndServe(":8080", r); err != nil {
+				log.Error("server failed", "error", err)
+				os.Exit(1)
+			}
 			return
 		}
 		adapter := chiadapter.NewV2(r)
