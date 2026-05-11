@@ -20,16 +20,18 @@ type takeoutEntry struct {
 	TitleURL string `json:"titleUrl"`
 	Subtitles []struct {
 		Name string `json:"name"`
+		URL  string `json:"url"`
 	} `json:"subtitles"`
 	Time string `json:"time"`
 }
 
 type videoInfo struct {
-	videoID string
-	vtype   string
-	title   string
-	channel *string
-	watchedAt time.Time
+	videoID    string
+	vtype      string
+	title      string
+	channel    *string
+	channelURL *string
+	watchedAt  time.Time
 }
 
 func parseEntries(data []byte, cutoff time.Time) ([]videoInfo, error) {
@@ -60,17 +62,23 @@ func parseEntries(data []byte, cutoff time.Time) ([]videoInfo, error) {
 		title := strings.TrimPrefix(e.Title, "Watched ")
 
 		var channel *string
+		var channelURL *string
 		if len(e.Subtitles) > 0 && e.Subtitles[0].Name != "" {
 			ch := e.Subtitles[0].Name
 			channel = &ch
+			if e.Subtitles[0].URL != "" {
+				cu := e.Subtitles[0].URL
+				channelURL = &cu
+			}
 		}
 
 		videos = append(videos, videoInfo{
-			videoID:   videoID,
-			vtype:     vtype,
-			title:     title,
-			channel:   channel,
-			watchedAt: watchedAt,
+			videoID:    videoID,
+			vtype:      vtype,
+			title:      title,
+			channel:    channel,
+			channelURL: channelURL,
+			watchedAt:  watchedAt,
 		})
 	}
 	return videos, nil
@@ -100,13 +108,14 @@ func ingest(ctx context.Context, db *pgxpool.Pool, videos []videoInfo, log *slog
 	for _, v := range videos {
 		var videoRowID int64
 		err := db.QueryRow(ctx, `
-			INSERT INTO youtube_video (video_id, type, title, channel)
-			VALUES ($1, $2, $3, $4)
+			INSERT INTO youtube_video (video_id, type, title, channel, channel_url)
+			VALUES ($1, $2, $3, $4, $5)
 			ON CONFLICT (video_id) DO UPDATE SET
-				title   = EXCLUDED.title,
-				channel = COALESCE(EXCLUDED.channel, youtube_video.channel)
+				title       = EXCLUDED.title,
+				channel     = COALESCE(EXCLUDED.channel, youtube_video.channel),
+				channel_url = COALESCE(EXCLUDED.channel_url, youtube_video.channel_url)
 			RETURNING id`,
-			v.videoID, v.vtype, v.title, v.channel,
+			v.videoID, v.vtype, v.title, v.channel, v.channelURL,
 		).Scan(&videoRowID)
 		if err != nil {
 			return fmt.Errorf("upsert video %s: %w", v.videoID, err)

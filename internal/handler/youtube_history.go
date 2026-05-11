@@ -24,6 +24,7 @@ type youtubeVideoResp struct {
 	URL             string         `json:"url"`
 	Title           string         `json:"title"`
 	Channel         *string        `json:"channel"`
+	ChannelURL      *string        `json:"channel_url"`
 	ThumbnailURL    *string        `json:"thumbnail_url"`
 	Description     *string        `json:"description"`
 	Duration        *durationResp  `json:"duration"`
@@ -121,7 +122,7 @@ func parseSort(r *http.Request) string {
 const listQuery = `
 SELECT
     h.uuid, h.active, h.watched_at,
-    v.uuid, v.video_id, v.type, v.title, v.channel,
+    v.uuid, v.video_id, v.type, v.title, v.channel, v.channel_url,
     v.thumbnail_url, v.description, v.duration_seconds,
     v.published_at, v.view_count, v.like_count, v.tags
 FROM youtube_history h
@@ -141,25 +142,26 @@ func scanRows(rows interface {
 	var items []youtubeHistoryItemResp
 	for rows.Next() {
 		var (
-			huuid     string
-			active    bool
-			watchedAt time.Time
-			vuuid     string
-			videoID   string
-			vtype     string
-			title     string
-			channel   *string
-			thumbURL  *string
-			desc      *string
-			durSec    *int
-			pubAt     *time.Time
-			viewCnt   *int64
-			likeCnt   *int64
-			tags      []string
+			huuid      string
+			active     bool
+			watchedAt  time.Time
+			vuuid      string
+			videoID    string
+			vtype      string
+			title      string
+			channel    *string
+			channelURL *string
+			thumbURL   *string
+			desc       *string
+			durSec     *int
+			pubAt      *time.Time
+			viewCnt    *int64
+			likeCnt    *int64
+			tags       []string
 		)
 		if err := rows.Scan(
 			&huuid, &active, &watchedAt,
-			&vuuid, &videoID, &vtype, &title, &channel,
+			&vuuid, &videoID, &vtype, &title, &channel, &channelURL,
 			&thumbURL, &desc, &durSec,
 			&pubAt, &viewCnt, &likeCnt, &tags,
 		); err != nil {
@@ -186,6 +188,7 @@ func scanRows(rows interface {
 				URL:          videoURL(videoID, vtype),
 				Title:        title,
 				Channel:      channel,
+				ChannelURL:   channelURL,
 				ThumbnailURL: thumbURL,
 				Description:  desc,
 				Duration:     dur,
@@ -268,7 +271,7 @@ func GetYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
 		const q = `
 SELECT
     h.uuid, h.active, h.watched_at,
-    v.uuid, v.video_id, v.type, v.title, v.channel,
+    v.uuid, v.video_id, v.type, v.title, v.channel, v.channel_url,
     v.thumbnail_url, v.description, v.duration_seconds,
     v.published_at, v.view_count, v.like_count, v.tags
 FROM youtube_history h
@@ -276,25 +279,26 @@ JOIN youtube_video v ON v.id = h.id_youtube_video
 WHERE h.uuid = $1`
 
 		var (
-			huuid     string
-			active    bool
-			watchedAt time.Time
-			vuuid     string
-			videoID   string
-			vtype     string
-			title     string
-			channel   *string
-			thumbURL  *string
-			desc      *string
-			durSec    *int
-			pubAt     *time.Time
-			viewCnt   *int64
-			likeCnt   *int64
-			tags      []string
+			huuid      string
+			active     bool
+			watchedAt  time.Time
+			vuuid      string
+			videoID    string
+			vtype      string
+			title      string
+			channel    *string
+			channelURL *string
+			thumbURL   *string
+			desc       *string
+			durSec     *int
+			pubAt      *time.Time
+			viewCnt    *int64
+			likeCnt    *int64
+			tags       []string
 		)
 		err := db.QueryRow(r.Context(), q, uuid).Scan(
 			&huuid, &active, &watchedAt,
-			&vuuid, &videoID, &vtype, &title, &channel,
+			&vuuid, &videoID, &vtype, &title, &channel, &channelURL,
 			&thumbURL, &desc, &durSec,
 			&pubAt, &viewCnt, &likeCnt, &tags,
 		)
@@ -328,6 +332,7 @@ WHERE h.uuid = $1`
 				URL:          videoURL(videoID, vtype),
 				Title:        title,
 				Channel:      channel,
+				ChannelURL:   channelURL,
 				ThumbnailURL: thumbURL,
 				Description:  desc,
 				Duration:     dur,
