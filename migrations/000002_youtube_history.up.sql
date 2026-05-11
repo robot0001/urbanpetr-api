@@ -25,7 +25,7 @@ CREATE TABLE youtube_history (
     uuid             UUID        NOT NULL DEFAULT gen_random_uuid(),
     id_youtube_video BIGINT      NOT NULL REFERENCES youtube_video(id),
     watched_at       TIMESTAMPTZ NOT NULL,
-    active           BOOLEAN     NOT NULL DEFAULT TRUE,
+    active           BOOLEAN     NOT NULL DEFAULT FALSE,
     imported_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
