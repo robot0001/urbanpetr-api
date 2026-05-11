@@ -30,6 +30,13 @@ func NewRouter(log *slog.Logger, db *pgxpool.Pool) *chi.Mux {
 		MaxAge:         300,
 	}))
 	r.Get("/health", HealthHandler(log))
+
+	r.Get("/v1/history/youtube/all",                ListAllYoutubeHistory(log, db))
+	r.Get("/v1/history/youtube",                    ListActiveYoutubeHistory(log, db))
+	r.Get("/v1/history/youtube/{uuid}",             GetYoutubeHistory(log, db))
+	r.Post("/v1/history/youtube/{uuid}/activate",   ActivateYoutubeHistory(log, db))
+	r.Post("/v1/history/youtube/{uuid}/deactivate", DeactivateYoutubeHistory(log, db))
+
 	return r
 }
 
