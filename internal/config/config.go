@@ -45,6 +45,19 @@ func (c *DBCredentials) MigrateDSN(dbname string) string {
 	return c.dsn("pgx5", dbname)
 }
 
+// LocalDSN returns a postgres:// DSN with sslmode=disable for local Docker Postgres.
+func (c *DBCredentials) LocalDSN() string {
+	db := c.DBName
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.Username, c.Password),
+		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
+		Path:     db,
+		RawQuery: "sslmode=disable",
+	}
+	return u.String()
+}
+
 // LocalMigrateDSN returns a pgx5:// DSN with sslmode=disable for local Docker Postgres.
 func (c *DBCredentials) LocalMigrateDSN() string {
 	db := c.DBName
