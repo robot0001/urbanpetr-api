@@ -26,6 +26,10 @@ data "aws_acm_certificate" "wildcard" {
   most_recent = true
 }
 
+data "aws_secretsmanager_secret" "youtube_api_key" {
+  name = "urbanpetr/api/staging/youtube_api_key"
+}
+
 data "aws_security_group" "staging_lambda" {
   name   = "urbanpetr-api-staging-lambda"
   vpc_id = local.vpc_id

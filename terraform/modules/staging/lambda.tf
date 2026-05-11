@@ -12,13 +12,14 @@ module "api_lambda" {
   execution_role_arn = aws_iam_role.api_lambda.arn
 
   environment_variables = {
-    APP_NAME            = "urbanpetr-api"
-    ENVIRONMENT         = var.environment
-    DB_SECRET_ARN       = data.aws_secretsmanager_secret.db_app.arn
-    DB_NAME             = local.db_name
-    DB_HOST             = local.rds_host
-    DB_PORT             = local.rds_port
-    LAMBDA_HANDLER_MODE = "api"
+    APP_NAME                   = "urbanpetr-api"
+    ENVIRONMENT                = var.environment
+    DB_SECRET_ARN              = data.aws_secretsmanager_secret.db_app.arn
+    DB_NAME                    = local.db_name
+    DB_HOST                    = local.rds_host
+    DB_PORT                    = local.rds_port
+    LAMBDA_HANDLER_MODE        = "api"
+    YOUTUBE_API_KEY_SECRET_ARN = data.aws_secretsmanager_secret.youtube_api_key.arn
   }
 
   custom_tags = local.common_tags

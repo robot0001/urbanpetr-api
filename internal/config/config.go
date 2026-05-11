@@ -106,6 +106,18 @@ func GetLocalCredentials() (*DBCredentials, error) {
 	}, nil
 }
 
+// GetStringSecret retrieves a plain-string secret from Secrets Manager.
+// Use this for API keys and other non-JSON secrets.
+func GetStringSecret(ctx context.Context, sm *secretsmanager.Client, arn string) (string, error) {
+	out, err := sm.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String(arn),
+	})
+	if err != nil {
+		return "", fmt.Errorf("get secret %s: %w", arn, err)
+	}
+	return aws.ToString(out.SecretString), nil
+}
+
 func GetSecret(ctx context.Context, sm *secretsmanager.Client, arn string) (*DBCredentials, error) {
 	out, err := sm.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
 		SecretId: aws.String(arn),
