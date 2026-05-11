@@ -34,3 +34,8 @@ data "aws_security_group" "staging_lambda" {
   name   = "urbanpetr-api-staging-lambda"
   vpc_id = local.vpc_id
 }
+
+# Shared staging Cognito pool — created once by terraform/envs/staging-base.
+data "aws_cognito_user_pools" "staging" {
+  name = "urbanpetr-staging"
+}
