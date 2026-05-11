@@ -83,6 +83,18 @@ resource "aws_secretsmanager_secret" "db_readonly" {
   }
 }
 
+# YouTube Data API v3 key shared across all PR staging environments.
+# Set the value manually in the AWS console after applying staging-base.
+resource "aws_secretsmanager_secret" "youtube_api_key" {
+  name                    = "urbanpetr/api/staging/youtube_api_key"
+  recovery_window_in_days = 0
+
+  tags = {
+    Project     = "urbanpetr-api"
+    Environment = "staging"
+  }
+}
+
 # Account-level policy allowing API Gateway to deliver access logs to CloudWatch.
 # Must live here (not in the per-PR staging module) because it is account-scoped.
 resource "aws_cloudwatch_log_resource_policy" "api_gateway_logging" {

@@ -28,6 +28,13 @@ data "aws_iam_policy_document" "api_lambda" {
     actions   = ["secretsmanager:GetSecretValue"]
     resources = [data.aws_secretsmanager_secret.db_app.arn]
   }
+
+  statement {
+    sid       = "ReadYouTubeAPIKey"
+    effect    = "Allow"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [data.aws_secretsmanager_secret.youtube_api_key.arn]
+  }
 }
 
 resource "aws_iam_role_policy" "api_lambda" {
