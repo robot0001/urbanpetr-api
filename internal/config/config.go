@@ -45,36 +45,52 @@ func (c *DBCredentials) MigrateDSN(dbname string) string {
 	return c.dsn("pgx5", dbname)
 }
 
+// LocalMigrateDSN returns a pgx5:// DSN with sslmode=disable for local Docker Postgres.
+func (c *DBCredentials) LocalMigrateDSN() string {
+	db := c.DBName
+	u := url.URL{
+		Scheme:   "pgx5",
+		User:     url.UserPassword(c.Username, c.Password),
+		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
+		Path:     db,
+		RawQuery: "sslmode=disable",
+	}
+	return u.String()
+}
+
 func (c *DBCredentials) dsn(scheme, dbname string) string {
 	db := c.DBName
 	if dbname != "" {
 		db = dbname
-	}
-	sslmode := "require"
-	if os.Getenv("ENVIRONMENT") == "local" {
-		sslmode = "disable"
 	}
 	u := url.URL{
 		Scheme:   scheme,
 		User:     url.UserPassword(c.Username, c.Password),
 		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
 		Path:     db,
-		RawQuery: "sslmode=" + sslmode,
+		RawQuery: "sslmode=require",
 	}
 	return u.String()
 }
 
-// GetCredentialsFromEnv builds DBCredentials from plain env vars.
-// Used when USE_ENV_CREDENTIALS=true (local Docker dev, no Secrets Manager).
-func GetCredentialsFromEnv() *DBCredentials {
-	port, _ := strconv.Atoi(os.Getenv("DB_PORT"))
+// GetLocalCredentials builds DBCredentials from DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD env vars.
+// Used when USE_ENV_CREDENTIALS=true (local Docker development).
+func GetLocalCredentials() (*DBCredentials, error) {
+	portStr := os.Getenv("DB_PORT")
+	if portStr == "" {
+		portStr = "5432"
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse DB_PORT %q: %w", portStr, err)
+	}
 	return &DBCredentials{
 		Host:     os.Getenv("DB_HOST"),
 		Port:     port,
 		DBName:   os.Getenv("DB_NAME"),
 		Username: os.Getenv("DB_USER"),
 		Password: os.Getenv("DB_PASSWORD"),
-	}
+	}, nil
 }
 
 func GetSecret(ctx context.Context, sm *secretsmanager.Client, arn string) (*DBCredentials, error) {

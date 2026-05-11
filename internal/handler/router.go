@@ -12,17 +12,18 @@ import (
 )
 
 func NewRouter(log *slog.Logger) *chi.Mux {
+	origins := []string{"https://urbanpetr.com", "https://*.urbanpetr.com"}
+	if os.Getenv("ENVIRONMENT") == "local" {
+		origins = append(origins, "http://localhost:3000", "http://localhost:*")
+	}
+
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Compress(5))
 	r.Use(requestLogger(log))
 	r.Use(recoverer(log))
-	allowedOrigins := []string{"https://urbanpetr.com", "https://*.urbanpetr.com"}
-	if os.Getenv("ENVIRONMENT") == "local" {
-		allowedOrigins = append(allowedOrigins, "http://localhost:3000")
-	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: allowedOrigins,
+		AllowedOrigins: origins,
 		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
 		MaxAge:         300,
