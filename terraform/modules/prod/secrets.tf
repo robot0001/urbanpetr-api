@@ -28,3 +28,12 @@ resource "aws_secretsmanager_secret" "db_readonly" {
 
   tags = local.common_tags
 }
+
+# Google OAuth credentials for Cognito — set the value manually after apply:
+# {"client_id":"...","client_secret":"..."}
+resource "aws_secretsmanager_secret" "google_oauth" {
+  name                    = "urbanpetr/cognito/google_oauth"
+  recovery_window_in_days = 0
+
+  tags = local.common_tags
+}

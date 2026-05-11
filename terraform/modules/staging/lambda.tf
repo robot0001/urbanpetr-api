@@ -20,6 +20,8 @@ module "api_lambda" {
     DB_PORT                    = local.rds_port
     LAMBDA_HANDLER_MODE        = "api"
     YOUTUBE_API_KEY_SECRET_ARN = data.aws_secretsmanager_secret.youtube_api_key.arn
+    COGNITO_USER_POOL_ID       = tolist(data.aws_cognito_user_pools.staging.ids)[0]
+    COGNITO_AWS_REGION         = "eu-central-1"
   }
 
   custom_tags = local.common_tags
