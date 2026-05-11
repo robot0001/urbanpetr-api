@@ -7,7 +7,11 @@ import (
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/robot0001/urbanpetr-api/internal/config"
 	"github.com/robot0001/urbanpetr-api/internal/handler"
 	"github.com/robot0001/urbanpetr-api/internal/migrate"
 	"github.com/robot0001/urbanpetr-api/internal/seed"
@@ -53,7 +57,14 @@ func main() {
 			return seed.Run(ctx)
 		})
 	default:
-		r := handler.NewRouter(log)
+		db, err := initPool(context.Background(), log, localHTTP)
+		if err != nil {
+			log.Error("db pool init failed", "error", err)
+			os.Exit(1)
+		}
+		defer db.Close()
+
+		r := handler.NewRouter(log, db)
 		if localHTTP {
 			log.Info("starting HTTP server", "addr", ":8080")
 			if err := http.ListenAndServe(":8080", r); err != nil {
@@ -65,4 +76,37 @@ func main() {
 		adapter := chiadapter.NewV2(r)
 		lambda.Start(adapter.ProxyWithContextV2)
 	}
+}
+
+func initPool(ctx context.Context, log *slog.Logger, local bool) (*pgxpool.Pool, error) {
+	var dsn string
+	if local {
+		creds, err := config.GetLocalCredentials()
+		if err != nil {
+			return nil, err
+		}
+		dsn = creds.LocalDSN()
+	} else {
+		cfg, err := awsconfig.LoadDefaultConfig(ctx)
+		if err != nil {
+			return nil, err
+		}
+		sm := secretsmanager.NewFromConfig(cfg)
+		creds, err := config.GetSecret(ctx, sm, os.Getenv("DB_SECRET_ARN"))
+		if err != nil {
+			return nil, err
+		}
+		dsn = creds.DSN("")
+	}
+
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, err
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	log.Info("db pool ready")
+	return pool, nil
 }

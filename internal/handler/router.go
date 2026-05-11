@@ -9,9 +9,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func NewRouter(log *slog.Logger) *chi.Mux {
+func NewRouter(log *slog.Logger, db *pgxpool.Pool) *chi.Mux {
 	origins := []string{"https://urbanpetr.com", "https://*.urbanpetr.com"}
 	if os.Getenv("ENVIRONMENT") == "local" {
 		origins = append(origins, "http://localhost:3000", "http://localhost:*")
