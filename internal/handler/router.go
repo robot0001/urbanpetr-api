@@ -10,9 +10,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/robot0001/urbanpetr-api/internal/youtube"
 )
 
-func NewRouter(log *slog.Logger, db *pgxpool.Pool) *chi.Mux {
+func NewRouter(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) *chi.Mux {
 	origins := []string{"https://urbanpetr.com", "https://*.urbanpetr.com"}
 	if os.Getenv("ENVIRONMENT") == "local" {
 		origins = append(origins, "http://localhost:3000", "http://localhost:*")
@@ -36,6 +37,7 @@ func NewRouter(log *slog.Logger, db *pgxpool.Pool) *chi.Mux {
 	r.Get("/v1/history/youtube/{uuid}",             GetYoutubeHistory(log, db))
 	r.Post("/v1/history/youtube/{uuid}/activate",   ActivateYoutubeHistory(log, db))
 	r.Post("/v1/history/youtube/{uuid}/deactivate", DeactivateYoutubeHistory(log, db))
+	r.Post("/v1/history/youtube/{uuid}/enrich",     EnrichYoutubeVideo(log, db, yt))
 
 	return r
 }

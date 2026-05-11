@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/robot0001/urbanpetr-api/internal/youtube"
 )
 
 // -- response types --
@@ -337,6 +338,96 @@ WHERE h.uuid = $1`
 				Tags:         tags,
 			},
 		})
+	}
+}
+
+func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if yt == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "enrichment not configured"})
+			return
+		}
+
+		uuid := chi.URLParam(r, "uuid")
+
+		var videoID string
+		err := db.QueryRow(r.Context(), `
+			SELECT v.video_id
+			FROM youtube_history h
+			JOIN youtube_video v ON v.id = h.id_youtube_video
+			WHERE h.uuid = $1
+		`, uuid).Scan(&videoID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+				return
+			}
+			log.Error("enrich: lookup video_id", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		details, err := yt.Enrich(r.Context(), []string{videoID})
+		if err != nil {
+			log.Error("enrich: youtube API", "error", err, "video_id", videoID)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		d, ok := details[videoID]
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found on YouTube"})
+			return
+		}
+
+		var thumbnailURL *string
+		if d.ThumbnailURL != "" {
+			thumbnailURL = &d.ThumbnailURL
+		}
+		var description *string
+		if d.Description != "" {
+			description = &d.Description
+		}
+		var durationSeconds *int
+		if d.DurationSeconds > 0 {
+			durationSeconds = &d.DurationSeconds
+		}
+		var publishedAt *time.Time
+		if !d.PublishedAt.IsZero() {
+			publishedAt = &d.PublishedAt
+		}
+		var viewCount *int64
+		if d.ViewCount > 0 {
+			viewCount = &d.ViewCount
+		}
+		var likeCount *int64
+		if d.LikeCount > 0 {
+			likeCount = &d.LikeCount
+		}
+		var tags []string
+		if len(d.Tags) > 0 {
+			tags = d.Tags
+		}
+
+		_, err = db.Exec(r.Context(), `
+			UPDATE youtube_video SET
+				thumbnail_url    = $1,
+				description      = $2,
+				duration_seconds = $3,
+				published_at     = $4,
+				view_count       = $5,
+				like_count       = $6,
+				tags             = $7,
+				enriched_at      = NOW()
+			WHERE video_id = $8
+		`, thumbnailURL, description, durationSeconds, publishedAt, viewCount, likeCount, tags, videoID)
+		if err != nil {
+			log.Error("enrich: db update", "error", err, "video_id", videoID)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "enriched", "video_id": videoID})
 	}
 }
 

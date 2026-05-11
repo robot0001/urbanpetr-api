@@ -15,6 +15,7 @@ import (
 	"github.com/robot0001/urbanpetr-api/internal/handler"
 	"github.com/robot0001/urbanpetr-api/internal/migrate"
 	"github.com/robot0001/urbanpetr-api/internal/seed"
+	"github.com/robot0001/urbanpetr-api/internal/youtube"
 )
 
 func main() {
@@ -64,7 +65,8 @@ func main() {
 		}
 		defer db.Close()
 
-		r := handler.NewRouter(log, db)
+		yt := initYoutubeClient(context.Background(), log, localHTTP)
+		r := handler.NewRouter(log, db, yt)
 		if localHTTP {
 			log.Info("starting HTTP server", "addr", ":8080")
 			if err := http.ListenAndServe(":8080", r); err != nil {
@@ -76,6 +78,31 @@ func main() {
 		adapter := chiadapter.NewV2(r)
 		lambda.Start(adapter.ProxyWithContextV2)
 	}
+}
+
+func initYoutubeClient(ctx context.Context, log *slog.Logger, local bool) *youtube.Client {
+	var apiKey string
+	if local {
+		apiKey = os.Getenv("YOUTUBE_API_KEY")
+	} else {
+		cfg, err := awsconfig.LoadDefaultConfig(ctx)
+		if err != nil {
+			log.Warn("youtube: load aws config failed", "error", err)
+			return nil
+		}
+		sm := secretsmanager.NewFromConfig(cfg)
+		key, err := config.GetStringSecret(ctx, sm, os.Getenv("YOUTUBE_API_KEY_SECRET_ARN"))
+		if err != nil {
+			log.Warn("youtube: api key unavailable, enrichment disabled", "error", err)
+			return nil
+		}
+		apiKey = key
+	}
+	if apiKey == "" {
+		log.Warn("youtube: YOUTUBE_API_KEY not set, enrichment disabled")
+		return nil
+	}
+	return youtube.New(apiKey)
 }
 
 func initPool(ctx context.Context, log *slog.Logger, local bool) (*pgxpool.Pool, error) {
