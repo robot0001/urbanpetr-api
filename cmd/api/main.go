@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/robot0001/urbanpetr-api/internal/auth"
 	"github.com/robot0001/urbanpetr-api/internal/config"
 	"github.com/robot0001/urbanpetr-api/internal/handler"
 	"github.com/robot0001/urbanpetr-api/internal/migrate"
@@ -66,7 +68,14 @@ func main() {
 		defer db.Close()
 
 		yt := initYoutubeClient(context.Background(), log, localHTTP)
-		r := handler.NewRouter(log, db, yt)
+
+		jwtm, err := initJWTMiddleware(log)
+		if err != nil {
+			log.Error("jwt middleware init failed", "error", err)
+			os.Exit(1)
+		}
+
+		r := handler.NewRouter(log, db, yt, jwtm)
 		if localHTTP {
 			log.Info("starting HTTP server", "addr", ":8080")
 			if err := http.ListenAndServe(":8080", r); err != nil {
@@ -103,6 +112,20 @@ func initYoutubeClient(ctx context.Context, log *slog.Logger, local bool) *youtu
 		return nil
 	}
 	return youtube.New(apiKey)
+}
+
+func initJWTMiddleware(log *slog.Logger) (*auth.JWTMiddleware, error) {
+	region := os.Getenv("COGNITO_AWS_REGION")
+	poolID := os.Getenv("COGNITO_USER_POOL_ID")
+	if region == "" || poolID == "" {
+		return nil, fmt.Errorf("COGNITO_AWS_REGION and COGNITO_USER_POOL_ID must be set")
+	}
+	m, err := auth.NewJWTMiddleware(region, poolID)
+	if err != nil {
+		return nil, err
+	}
+	log.Info("jwt middleware ready", "region", region, "pool", poolID)
+	return m, nil
 }
 
 func initPool(ctx context.Context, log *slog.Logger, local bool) (*pgxpool.Pool, error) {
