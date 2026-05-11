@@ -115,9 +115,10 @@ jobs:
       - name: Get API Gateway DNS info
         working-directory: terraform/envs/staging
         run: |
-          echo "API_GW_TARGET=$(terraform output -raw api_gateway_target_domain)" >> "$GITHUB_ENV"
-          echo "API_GW_ZONE=$(terraform output -raw api_gateway_hosted_zone_id)" >> "$GITHUB_ENV"
-          echo "CUSTOM_DOMAIN_URL=$(terraform output -raw custom_domain_url)" >> "$GITHUB_ENV"
+          TF_OUT=$(terraform output -json 2>/dev/null)
+          echo "API_GW_TARGET=$(echo "$TF_OUT" | jq -r '.api_gateway_target_domain.value // ""')" >> "$GITHUB_ENV"
+          echo "API_GW_ZONE=$(echo "$TF_OUT" | jq -r '.api_gateway_hosted_zone_id.value // ""')" >> "$GITHUB_ENV"
+          echo "CUSTOM_DOMAIN_URL=$(echo "$TF_OUT" | jq -r '.custom_domain_url.value // ""')" >> "$GITHUB_ENV"
 
       - name: Configure AWS credentials (prod — Route53)
         uses: aws-actions/configure-aws-credentials@v6.1.0
@@ -205,8 +206,9 @@ jobs:
         if: steps.check.outputs.exists == 'true'
         working-directory: terraform/envs/staging
         run: |
-          echo "API_GW_TARGET=$(terraform output -raw api_gateway_target_domain)" >> "$GITHUB_ENV"
-          echo "API_GW_ZONE=$(terraform output -raw api_gateway_hosted_zone_id)" >> "$GITHUB_ENV"
+          TF_OUT=$(terraform output -json 2>/dev/null)
+          echo "API_GW_TARGET=$(echo "$TF_OUT" | jq -r '.api_gateway_target_domain.value // ""')" >> "$GITHUB_ENV"
+          echo "API_GW_ZONE=$(echo "$TF_OUT" | jq -r '.api_gateway_hosted_zone_id.value // ""')" >> "$GITHUB_ENV"
 
       - name: Configure AWS credentials (prod — Route53)
         if: steps.check.outputs.exists == 'true'
