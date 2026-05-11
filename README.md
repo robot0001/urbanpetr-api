@@ -87,6 +87,27 @@ Prod infrastructure lives in AWS Account A (`eu-central-1`), staging in Account 
 
 Platform outputs (VPC, RDS endpoint, security groups) are consumed via `terraform_remote_state` from the `urbanpetr-platform` repo.
 
+## Database conventions
+
+| Convention | Rule | Example |
+|---|---|---|
+| Table names | Singular | `youtube_video`, not `youtube_videos` |
+| Primary key | `id BIGSERIAL` | `id BIGSERIAL PRIMARY KEY` |
+| External identifier | `uuid UUID` with unique index | `uuid UUID NOT NULL DEFAULT gen_random_uuid()` |
+| Foreign keys | `id_<table>` or `id_<table>_<role>` | `id_youtube_video`, `id_user_created_by` |
+| Units in column names | Suffix with unit | `duration_seconds`, `length_mm`, `weight_kg`, `price_cents` |
+| API exposure | Expose `uuid`, never `id` | `id` is internal only; FK columns are also internal |
+
+Every table follows the same skeleton:
+
+```sql
+CREATE TABLE thing (
+    id    BIGSERIAL PRIMARY KEY,
+    uuid  UUID NOT NULL DEFAULT gen_random_uuid()
+);
+CREATE UNIQUE INDEX thing_uuid_idx ON thing (uuid);
+```
+
 ## Endpoints
 
 | Method | Path | Description |
