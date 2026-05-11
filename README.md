@@ -97,6 +97,7 @@ Platform outputs (VPC, RDS endpoint, security groups) are consumed via `terrafor
 | Foreign keys | `id_<table>` or `id_<table>_<role>` | `id_youtube_video`, `id_user_created_by` |
 | Units in column names | Suffix with unit | `duration_seconds`, `length_mm`, `weight_kg`, `price_cents` |
 | API exposure | Expose `uuid`, never `id` | `id` is internal only; FK columns are also internal |
+| Timestamps in API responses | Object with `timestamp` (Unix) and `formatted` (human) | `"watched_at": { "timestamp": 1623027945, "formatted": "6 Jun 2021, 13:05" }` |
 
 Every table follows the same skeleton:
 
