@@ -15,7 +15,7 @@ func testLogger() *slog.Logger {
 }
 
 func TestHealthHandler(t *testing.T) {
-	r := handler.NewRouter(testLogger(), nil, nil)
+	r := handler.NewRouter(testLogger(), nil, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -27,7 +27,7 @@ func TestHealthHandler(t *testing.T) {
 
 func preflight(t *testing.T, origin string) *httptest.ResponseRecorder {
 	t.Helper()
-	r := handler.NewRouter(testLogger(), nil, nil)
+	r := handler.NewRouter(testLogger(), nil, nil, nil)
 	req := httptest.NewRequest(http.MethodOptions, "/health", nil)
 	req.Header.Set("Origin", origin)
 	req.Header.Set("Access-Control-Request-Method", "GET")
