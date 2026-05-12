@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
@@ -9,9 +10,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/robot0001/urbanpetr-api/internal/auth"
+	"github.com/robot0001/urbanpetr-api/internal/youtube"
 )
 
-func NewRouter(log *slog.Logger) *chi.Mux {
+func NewRouter(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client, jwtMiddleware *auth.JWTMiddleware) *chi.Mux {
 	origins := []string{"https://urbanpetr.com", "https://*.urbanpetr.com"}
 	if os.Getenv("ENVIRONMENT") == "local" {
 		origins = append(origins, "http://localhost:3000", "http://localhost:*")
@@ -29,6 +33,17 @@ func NewRouter(log *slog.Logger) *chi.Mux {
 		MaxAge:         300,
 	}))
 	r.Get("/health", HealthHandler(log))
+	r.Get("/v1/history/youtube", ListActiveYoutubeHistory(log, db))
+
+	r.Group(func(r chi.Router) {
+		r.Use(jwtMiddleware.Require("urbanpetr_admin"))
+		r.Get("/v1/history/youtube/all",                ListAllYoutubeHistory(log, db))
+		r.Get("/v1/history/youtube/{uuid}",             GetYoutubeHistory(log, db))
+		r.Post("/v1/history/youtube/{uuid}/activate",   ActivateYoutubeHistory(log, db))
+		r.Post("/v1/history/youtube/{uuid}/deactivate", DeactivateYoutubeHistory(log, db))
+		r.Post("/v1/history/youtube/{uuid}/enrich",     EnrichYoutubeVideo(log, db, yt))
+	})
+
 	return r
 }
 
@@ -60,7 +75,9 @@ func recoverer(log *slog.Logger) func(http.Handler) http.Handler {
 						"path", r.URL.Path,
 						"request_id", middleware.GetReqID(r.Context()),
 					)
-					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 				}
 			}()
 			next.ServeHTTP(w, r)

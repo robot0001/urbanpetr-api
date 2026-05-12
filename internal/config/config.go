@@ -45,6 +45,19 @@ func (c *DBCredentials) MigrateDSN(dbname string) string {
 	return c.dsn("pgx5", dbname)
 }
 
+// LocalDSN returns a postgres:// DSN with sslmode=disable for local Docker Postgres.
+func (c *DBCredentials) LocalDSN() string {
+	db := c.DBName
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(c.Username, c.Password),
+		Host:     fmt.Sprintf("%s:%d", c.Host, c.Port),
+		Path:     db,
+		RawQuery: "sslmode=disable",
+	}
+	return u.String()
+}
+
 // LocalMigrateDSN returns a pgx5:// DSN with sslmode=disable for local Docker Postgres.
 func (c *DBCredentials) LocalMigrateDSN() string {
 	db := c.DBName
@@ -91,6 +104,18 @@ func GetLocalCredentials() (*DBCredentials, error) {
 		Username: os.Getenv("DB_USER"),
 		Password: os.Getenv("DB_PASSWORD"),
 	}, nil
+}
+
+// GetStringSecret retrieves a plain-string secret from Secrets Manager.
+// Use this for API keys and other non-JSON secrets.
+func GetStringSecret(ctx context.Context, sm *secretsmanager.Client, arn string) (string, error) {
+	out, err := sm.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String(arn),
+	})
+	if err != nil {
+		return "", fmt.Errorf("get secret %s: %w", arn, err)
+	}
+	return aws.ToString(out.SecretString), nil
 }
 
 func GetSecret(ctx context.Context, sm *secretsmanager.Client, arn string) (*DBCredentials, error) {

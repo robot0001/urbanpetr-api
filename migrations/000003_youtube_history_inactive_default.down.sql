@@ -1,0 +1,1 @@
+ALTER TABLE youtube_history ALTER COLUMN active SET DEFAULT TRUE;
