@@ -46,7 +46,7 @@ func newTestMiddleware(t *testing.T) (*JWTMiddleware, func(claims cognitoClaims)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(set)
+		_ = json.NewEncoder(w).Encode(set)
 	}))
 	t.Cleanup(srv.Close)
 

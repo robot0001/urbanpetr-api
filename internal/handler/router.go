@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
@@ -74,7 +75,9 @@ func recoverer(log *slog.Logger) func(http.Handler) http.Handler {
 						"path", r.URL.Path,
 						"request_id", middleware.GetReqID(r.Context()),
 					)
-					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": "internal server error"})
 				}
 			}()
 			next.ServeHTTP(w, r)

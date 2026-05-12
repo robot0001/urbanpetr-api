@@ -42,7 +42,7 @@ resource "aws_cognito_identity_provider" "google" {
   provider_details = {
     client_id                     = var.google_oauth_client_id
     client_secret                 = var.google_oauth_client_secret
-    authorize_scopes              = "email openid profile"
+    authorize_scopes              = "email openid"
     attributes_url                = "https://people.googleapis.com/v1/people/me?personFields="
     attributes_url_add_attributes = "true"
     authorize_url                 = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -52,8 +52,9 @@ resource "aws_cognito_identity_provider" "google" {
   }
 
   attribute_mapping = {
-    email    = "email"
-    username = "sub"
+    email          = "email"
+    username       = "sub"
+    email_verified = "email_verified"
   }
 }
 
@@ -64,7 +65,7 @@ resource "aws_cognito_user_pool_client" "admin_spa" {
   generate_secret = false
 
   allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["email", "openid", "profile"]
+  allowed_oauth_scopes                 = ["email", "openid"]
   allowed_oauth_flows_user_pool_client = true
 
   # Google IdP wired in once available; falls back to Cognito-only before that.
@@ -87,6 +88,6 @@ resource "aws_cognito_user_pool_client" "admin_spa" {
     refresh_token = "minutes"
   }
 
-  read_attributes  = ["email"]
+  read_attributes  = ["email", "email_verified"]
   write_attributes = ["email"]
 }

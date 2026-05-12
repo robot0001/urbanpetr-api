@@ -10,7 +10,7 @@ import (
 func stubServer(t *testing.T, items []apiItem) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(apiResponse{Items: items})
+		_ = json.NewEncoder(w).Encode(apiResponse{Items: items})
 	}))
 }
 
