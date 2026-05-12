@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,6 +10,12 @@ import (
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
 )
+
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
 
 type JWTMiddleware struct {
 	issuer  string
@@ -45,7 +52,7 @@ func (m *JWTMiddleware) Require(role string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			raw, err := extractBearer(r)
 			if err != nil {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
 
@@ -56,12 +63,12 @@ func (m *JWTMiddleware) Require(role string) func(http.Handler) http.Handler {
 				jwt.WithValidMethods([]string{"RS256"}),
 			)
 			if err != nil {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
 
 			if claims.TokenUse != "access" {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				writeJSONError(w, http.StatusUnauthorized, "unauthorized")
 				return
 			}
 
@@ -71,7 +78,7 @@ func (m *JWTMiddleware) Require(role string) func(http.Handler) http.Handler {
 					return
 				}
 			}
-			http.Error(w, "forbidden", http.StatusForbidden)
+			writeJSONError(w, http.StatusForbidden, "forbidden")
 		})
 	}
 }
