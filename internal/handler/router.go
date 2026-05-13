@@ -42,6 +42,7 @@ func NewRouter(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client, jwtMiddle
 		r.Post("/v1/history/youtube/ingest",             IngestYoutubeHistory(log, db))
 		r.Post("/v1/history/youtube/{uuid}/activate",   ActivateYoutubeHistory(log, db))
 		r.Post("/v1/history/youtube/{uuid}/deactivate", DeactivateYoutubeHistory(log, db))
+		r.Patch("/v1/history/youtube/{uuid}",            UpdateYoutubeHistoryDetails(log, db))
 		r.Post("/v1/history/youtube/{uuid}/enrich",     EnrichYoutubeVideo(log, db, yt))
 	})
 
