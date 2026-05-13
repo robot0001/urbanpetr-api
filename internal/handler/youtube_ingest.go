@@ -1,9 +1,13 @@
 package handler
 
 import (
+	"archive/zip"
+	"bytes"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,16 +28,22 @@ func IngestYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		data, err := io.ReadAll(file)
+		zipData, err := io.ReadAll(file)
 		if err != nil {
 			log.Error("ingest: read file", "error", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
-		videos, err := ingest.ParseEntries(data, time.Time{})
+		jsonData, err := extractJSONFromZip(zipData)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid file format"})
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		videos, err := ingest.ParseEntries(jsonData, time.Time{})
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid watch history JSON"})
 			return
 		}
 
@@ -46,4 +56,24 @@ func IngestYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, map[string]int{"total": total, "created": created})
 	}
+}
+
+func extractJSONFromZip(data []byte) ([]byte, error) {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, fmt.Errorf("not a valid zip file")
+	}
+
+	for _, f := range zr.File {
+		if strings.HasSuffix(f.Name, ".json") {
+			rc, err := f.Open()
+			if err != nil {
+				return nil, fmt.Errorf("could not open %s in zip", f.Name)
+			}
+			defer rc.Close()
+			return io.ReadAll(rc)
+		}
+	}
+
+	return nil, fmt.Errorf("no JSON file found in zip")
 }
