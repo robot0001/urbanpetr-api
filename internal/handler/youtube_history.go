@@ -36,10 +36,12 @@ type youtubeVideoResp struct {
 }
 
 type youtubeHistoryItemResp struct {
-	UUID      string           `json:"uuid"`
-	Active    bool             `json:"active"`
-	WatchedAt timestampResp    `json:"watched_at"`
-	Video     youtubeVideoResp `json:"video"`
+	UUID       string           `json:"uuid"`
+	Active     bool             `json:"active"`
+	WatchedAt  timestampResp    `json:"watched_at"`
+	Comment    *string          `json:"comment"`
+	CustomTags []string         `json:"custom_tags"`
+	Video      youtubeVideoResp `json:"video"`
 }
 
 type timestampResp struct {
@@ -122,7 +124,7 @@ func parseSort(r *http.Request) string {
 
 const listQuery = `
 SELECT
-    h.uuid, h.active, h.watched_at,
+    h.uuid, h.active, h.watched_at, h.comment, h.custom_tags,
     v.uuid, v.video_id, v.type, v.title, v.channel, v.channel_url,
     v.thumbnail_url, v.description, v.duration_seconds,
     v.published_at, v.view_count, v.like_count, v.tags
@@ -146,6 +148,8 @@ func scanRows(rows interface {
 			huuid      string
 			active     bool
 			watchedAt  time.Time
+			comment    *string
+			customTags []string
 			vuuid      string
 			videoID    string
 			vtype      string
@@ -161,12 +165,16 @@ func scanRows(rows interface {
 			tags       []string
 		)
 		if err := rows.Scan(
-			&huuid, &active, &watchedAt,
+			&huuid, &active, &watchedAt, &comment, &customTags,
 			&vuuid, &videoID, &vtype, &title, &channel, &channelURL,
 			&thumbURL, &desc, &durSec,
 			&pubAt, &viewCnt, &likeCnt, &tags,
 		); err != nil {
 			return nil, err
+		}
+
+		if customTags == nil {
+			customTags = []string{}
 		}
 
 		var dur *durationResp
@@ -179,9 +187,11 @@ func scanRows(rows interface {
 		}
 
 		items = append(items, youtubeHistoryItemResp{
-			UUID:      huuid,
-			Active:    active,
-			WatchedAt: formatWatchedAt(watchedAt),
+			UUID:       huuid,
+			Active:     active,
+			WatchedAt:  formatWatchedAt(watchedAt),
+			Comment:    comment,
+			CustomTags: customTags,
 			Video: youtubeVideoResp{
 				UUID:         vuuid,
 				ID:           videoID,
@@ -271,7 +281,7 @@ func GetYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
 
 		const q = `
 SELECT
-    h.uuid, h.active, h.watched_at,
+    h.uuid, h.active, h.watched_at, h.comment, h.custom_tags,
     v.uuid, v.video_id, v.type, v.title, v.channel, v.channel_url,
     v.thumbnail_url, v.description, v.duration_seconds,
     v.published_at, v.view_count, v.like_count, v.tags
@@ -283,6 +293,8 @@ WHERE h.uuid = $1`
 			huuid      string
 			active     bool
 			watchedAt  time.Time
+			comment    *string
+			customTags []string
 			vuuid      string
 			videoID    string
 			vtype      string
@@ -298,7 +310,7 @@ WHERE h.uuid = $1`
 			tags       []string
 		)
 		err := db.QueryRow(r.Context(), q, uuid).Scan(
-			&huuid, &active, &watchedAt,
+			&huuid, &active, &watchedAt, &comment, &customTags,
 			&vuuid, &videoID, &vtype, &title, &channel, &channelURL,
 			&thumbURL, &desc, &durSec,
 			&pubAt, &viewCnt, &likeCnt, &tags,
@@ -322,10 +334,16 @@ WHERE h.uuid = $1`
 			pub = formatPublishedAt(*pubAt)
 		}
 
+		if customTags == nil {
+			customTags = []string{}
+		}
+
 		writeJSON(w, http.StatusOK, youtubeHistoryItemResp{
-			UUID:      huuid,
-			Active:    active,
-			WatchedAt: formatWatchedAt(watchedAt),
+			UUID:       huuid,
+			Active:     active,
+			WatchedAt:  formatWatchedAt(watchedAt),
+			Comment:    comment,
+			CustomTags: customTags,
 			Video: youtubeVideoResp{
 				UUID:         vuuid,
 				ID:           videoID,
@@ -436,8 +454,42 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 	}
 }
 
+type activateBody struct {
+	Comment    *string  `json:"comment"`
+	CustomTags []string `json:"custom_tags"`
+}
+
 func ActivateYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
-	return setActive(log, db, true)
+	return func(w http.ResponseWriter, r *http.Request) {
+		uuid := chi.URLParam(r, "uuid")
+
+		var body activateBody
+		if r.ContentLength > 0 {
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+				return
+			}
+		}
+		if body.CustomTags == nil {
+			body.CustomTags = []string{}
+		}
+
+		tag, err := db.Exec(r.Context(),
+			`UPDATE youtube_history SET active = TRUE, comment = $1, custom_tags = $2 WHERE uuid = $3`,
+			body.Comment, body.CustomTags, uuid,
+		)
+		if err != nil {
+			log.Error("activate youtube_history", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		if tag.RowsAffected() == 0 {
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"uuid": uuid, "active": true})
+	}
 }
 
 func DeactivateYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
