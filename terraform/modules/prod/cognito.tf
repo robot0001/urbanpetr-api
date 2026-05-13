@@ -1,3 +1,11 @@
+data "aws_secretsmanager_secret_version" "google_oauth" {
+  secret_id = "urbanpetr/cognito/google_oauth"
+}
+
+locals {
+  google_oauth = jsondecode(data.aws_secretsmanager_secret_version.google_oauth.secret_string)
+}
+
 resource "aws_cognito_user_pool" "main" {
   name = "urbanpetr-${var.environment}"
 
@@ -29,19 +37,14 @@ resource "aws_cognito_user_group" "admin" {
   description  = "Full access to all API endpoints"
 }
 
-# Google IdP — only created once google_oauth_client_id is provided.
-# Pass credentials via TF_VAR_google_oauth_client_id / TF_VAR_google_oauth_client_secret
-# or as GitHub Actions secrets before applying.
 resource "aws_cognito_identity_provider" "google" {
-  count = var.google_oauth_client_id != "" ? 1 : 0
-
   user_pool_id  = aws_cognito_user_pool.main.id
   provider_name = "Google"
   provider_type = "Google"
 
   provider_details = {
-    client_id                     = var.google_oauth_client_id
-    client_secret                 = var.google_oauth_client_secret
+    client_id                     = local.google_oauth.client_id
+    client_secret                 = local.google_oauth.client_secret
     authorize_scopes              = "email openid"
     attributes_url                = "https://people.googleapis.com/v1/people/me?personFields="
     attributes_url_add_attributes = "true"
@@ -68,8 +71,7 @@ resource "aws_cognito_user_pool_client" "admin_spa" {
   allowed_oauth_scopes                 = ["email", "openid"]
   allowed_oauth_flows_user_pool_client = true
 
-  # Google IdP wired in once available; falls back to Cognito-only before that.
-  supported_identity_providers = length(aws_cognito_identity_provider.google) > 0 ? ["Google"] : ["COGNITO"]
+  supported_identity_providers = ["Google"]
 
   callback_urls = [
     "https://admin.urbanpetr.com/auth-callback",
