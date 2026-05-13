@@ -1,14 +1,9 @@
-variable "google_oauth_client_id" {
-  type        = string
-  description = "Google OAuth client ID. Set via TF_VAR_google_oauth_client_id."
-  default     = ""
+data "aws_secretsmanager_secret_version" "google_oauth" {
+  secret_id = "urbanpetr/cognito/google_oauth"
 }
 
-variable "google_oauth_client_secret" {
-  type        = string
-  sensitive   = true
-  description = "Google OAuth client secret. Set via TF_VAR_google_oauth_client_secret."
-  default     = ""
+locals {
+  google_oauth = jsondecode(data.aws_secretsmanager_secret_version.google_oauth.secret_string)
 }
 
 resource "aws_cognito_user_pool" "staging" {
@@ -46,15 +41,13 @@ resource "aws_cognito_user_group" "admin" {
 }
 
 resource "aws_cognito_identity_provider" "google" {
-  count = var.google_oauth_client_id != "" ? 1 : 0
-
   user_pool_id  = aws_cognito_user_pool.staging.id
   provider_name = "Google"
   provider_type = "Google"
 
   provider_details = {
-    client_id                     = var.google_oauth_client_id
-    client_secret                 = var.google_oauth_client_secret
+    client_id                     = local.google_oauth.client_id
+    client_secret                 = local.google_oauth.client_secret
     authorize_scopes              = "email openid"
     attributes_url                = "https://people.googleapis.com/v1/people/me?personFields="
     attributes_url_add_attributes = "true"
@@ -82,7 +75,7 @@ resource "aws_cognito_user_pool_client" "admin_spa" {
   allowed_oauth_scopes                 = ["email", "openid"]
   allowed_oauth_flows_user_pool_client = true
 
-  supported_identity_providers = length(aws_cognito_identity_provider.google) > 0 ? ["Google"] : ["COGNITO"]
+  supported_identity_providers = ["Google"]
 
   callback_urls = ["http://localhost:3001/auth-callback"]
   logout_urls   = ["http://localhost:3001"]
