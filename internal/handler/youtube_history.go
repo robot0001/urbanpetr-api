@@ -496,6 +496,37 @@ func DeactivateYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFu
 	return setActive(log, db, false)
 }
 
+func UpdateYoutubeHistoryDetails(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		uuid := chi.URLParam(r, "uuid")
+
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		var body activateBody
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+			return
+		}
+		if body.CustomTags == nil {
+			body.CustomTags = []string{}
+		}
+
+		tag, err := db.Exec(r.Context(),
+			`UPDATE youtube_history SET comment = $1, custom_tags = $2 WHERE uuid = $3`,
+			body.Comment, body.CustomTags, uuid,
+		)
+		if err != nil {
+			log.Error("update youtube_history details", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		if tag.RowsAffected() == 0 {
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"uuid": uuid})
+	}
+}
+
 func setActive(log *slog.Logger, db *pgxpool.Pool, active bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		uuid := chi.URLParam(r, "uuid")
