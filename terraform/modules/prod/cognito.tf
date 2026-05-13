@@ -72,8 +72,8 @@ resource "aws_cognito_user_pool_client" "admin_spa" {
   supported_identity_providers = length(aws_cognito_identity_provider.google) > 0 ? ["Google"] : ["COGNITO"]
 
   callback_urls = [
-    "https://admin.urbanpetr.com/callback",
-    "http://localhost:3001/callback",
+    "https://admin.urbanpetr.com/auth-callback",
+    "http://localhost:3001/auth-callback",
   ]
   logout_urls = [
     "https://admin.urbanpetr.com",
