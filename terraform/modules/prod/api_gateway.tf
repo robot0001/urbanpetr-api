@@ -7,6 +7,7 @@ module "api_gateway" {
   custom_domain_name         = local.api_domain
   certificate_arn            = aws_acm_certificate_validation.api.certificate_arn
   access_log_destination_arn = aws_cloudwatch_log_group.api_gateway.arn
+  cors_allow_origins         = ["https://urbanpetr.com", "https://*.urbanpetr.com"]
 
   custom_tags = local.common_tags
 }
