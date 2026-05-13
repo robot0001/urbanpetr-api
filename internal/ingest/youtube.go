@@ -117,18 +117,21 @@ func Ingest(ctx context.Context, db *pgxpool.Pool, videos []VideoInfo) (total, c
 }
 
 func ingestBatch(ctx context.Context, db *pgxpool.Pool, batch []VideoInfo) (int, error) {
-	sz := len(batch)
-	vidIDs      := make([]string,  sz)
-	types       := make([]string,  sz)
-	titles      := make([]string,  sz)
-	channels    := make([]*string, sz)
-	channelURLs := make([]*string, sz)
-	for i, v := range batch {
-		vidIDs[i]      = v.VideoID
-		types[i]       = v.Type
-		titles[i]      = v.Title
-		channels[i]    = v.Channel
-		channelURLs[i] = v.ChannelURL
+	// Deduplicate by video_id for the upsert — same video watched multiple times in a
+	// batch would cause "ON CONFLICT DO UPDATE command cannot affect row a second time".
+	seen := make(map[string]bool, len(batch))
+	var vidIDs, types, titles []string
+	var channels, channelURLs []*string
+	for _, v := range batch {
+		if seen[v.VideoID] {
+			continue
+		}
+		seen[v.VideoID] = true
+		vidIDs      = append(vidIDs, v.VideoID)
+		types       = append(types, v.Type)
+		titles      = append(titles, v.Title)
+		channels    = append(channels, v.Channel)
+		channelURLs = append(channelURLs, v.ChannelURL)
 	}
 
 	// Bulk upsert into youtube_video; DO UPDATE ensures RETURNING covers conflicts too
@@ -148,7 +151,7 @@ func ingestBatch(ctx context.Context, db *pgxpool.Pool, batch []VideoInfo) (int,
 		return 0, fmt.Errorf("bulk upsert videos: %w", err)
 	}
 
-	idByVidID := make(map[string]int64, sz)
+	idByVidID := make(map[string]int64, len(vidIDs))
 	for rows.Next() {
 		var id int64
 		var vid string
@@ -163,6 +166,7 @@ func ingestBatch(ctx context.Context, db *pgxpool.Pool, batch []VideoInfo) (int,
 		return 0, fmt.Errorf("read video upsert: %w", err)
 	}
 
+	sz := len(batch)
 	intIDs     := make([]int64,     sz)
 	watchedAts := make([]time.Time, sz)
 	for i, v := range batch {
