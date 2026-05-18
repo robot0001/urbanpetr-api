@@ -453,13 +453,13 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 
 		uuid := chi.URLParam(r, "uuid")
 
-		var videoID string
+		var videoID, currentType string
 		err := db.QueryRow(r.Context(), `
-			SELECT v.video_id
+			SELECT v.video_id, v.type::text
 			FROM youtube_history h
 			JOIN youtube_video v ON v.id = h.id_youtube_video
 			WHERE h.uuid = $1
-		`, uuid).Scan(&videoID)
+		`, uuid).Scan(&videoID, &currentType)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
@@ -512,6 +512,11 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			tags = d.Tags
 		}
 
+		newType := currentType
+		if currentType == "short" && d.DurationSeconds > 80 {
+			newType = "video"
+		}
+
 		_, err = db.Exec(r.Context(), `
 			UPDATE youtube_video SET
 				thumbnail_url    = $1,
@@ -521,9 +526,10 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 				view_count       = $5,
 				like_count       = $6,
 				tags             = $7,
+				type             = $8::youtube_video_type,
 				enriched_at      = NOW()
-			WHERE video_id = $8
-		`, thumbnailURL, description, durationSeconds, publishedAt, viewCount, likeCount, tags, videoID)
+			WHERE video_id = $9
+		`, thumbnailURL, description, durationSeconds, publishedAt, viewCount, likeCount, tags, newType, videoID)
 		if err != nil {
 			log.Error("enrich: db update", "error", err, "video_id", videoID)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -537,6 +543,7 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 type activateBody struct {
 	Comment    *string  `json:"comment"`
 	CustomTags []string `json:"custom_tags"`
+	VideoType  *string  `json:"video_type"`
 }
 
 func ActivateYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
@@ -588,6 +595,23 @@ func UpdateYoutubeHistoryDetails(log *slog.Logger, db *pgxpool.Pool) http.Handle
 		}
 		if body.CustomTags == nil {
 			body.CustomTags = []string{}
+		}
+
+		if body.VideoType != nil {
+			vt := *body.VideoType
+			if vt != "video" && vt != "short" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid video_type"})
+				return
+			}
+			_, err := db.Exec(r.Context(), `
+				UPDATE youtube_video SET type = $1::youtube_video_type
+				WHERE id = (SELECT id_youtube_video FROM youtube_history WHERE uuid = $2)
+			`, vt, uuid)
+			if err != nil {
+				log.Error("update video type", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
 		}
 
 		tag, err := db.Exec(r.Context(),
