@@ -445,7 +445,7 @@ WHERE h.uuid = $1`
 	}
 }
 
-const autoEnrichLimit = 100
+const autoEnrichLimit = 500
 
 func applyEnrichment(ctx context.Context, db *pgxpool.Pool, dbID int64, currentType string, d youtube.VideoDetails) error {
 	var thumbnailURL *string

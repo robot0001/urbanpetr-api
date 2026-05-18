@@ -140,11 +140,11 @@ The net effect: a timing-based short must have started rapidly *and* the user mu
 
 ### Auto-enrichment
 
-After every ingest the API fetches YouTube metadata for the **100 most recently watched un-enriched videos** (`enriched_at IS NULL`), in two batches of 50. The YouTube Data API v3 allows up to 50 IDs per `videos.list` call (1 quota unit per call regardless of batch size), so 100 videos costs 2 units.
+After every ingest the API fetches YouTube metadata for the **500 most recently watched un-enriched videos** (`enriched_at IS NULL`), in batches of 50. The YouTube Data API v3 allows up to 50 IDs per `videos.list` call (1 quota unit per call regardless of batch size), so 500 videos costs 10 units.
 
 Videos already enriched (`enriched_at IS NOT NULL`) are skipped. Individual videos can also be enriched on demand via `POST /v1/history/youtube/{uuid}/enrich`.
 
-The auto-enrich limit (`autoEnrichLimit = 100`) and batch size (50, dictated by the YouTube API) will be tuned as needed.
+The auto-enrich limit (`autoEnrichLimit = 500`) and batch size (50, dictated by the YouTube API) will be tuned as needed.
 
 ## Endpoints
 
