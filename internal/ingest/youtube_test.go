@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -249,5 +250,165 @@ func TestParseEntries_InvalidJSON(t *testing.T) {
 	_, err := ParseEntries([]byte("{not valid json"), time.Time{})
 	if err == nil {
 		t.Error("expected error for invalid JSON, got nil")
+	}
+}
+
+func TestMarkShortsFromTiming(t *testing.T) {
+	base := mustTime("2026-05-10T10:00:00.000Z")
+
+	tests := []struct {
+		name      string
+		gaps      []time.Duration // gaps[i] = WatchedAt[i] - WatchedAt[i-1]; gaps[0] unused
+		urlTypes  []string        // type detected from URL
+		wantTypes []string
+	}{
+		{
+			name:      "single video — no previous to compare",
+			gaps:      []time.Duration{0},
+			urlTypes:  []string{"video"},
+			wantTypes: []string{"video"},
+		},
+		{
+			name:      "gap under 80s marks as short",
+			gaps:      []time.Duration{0, 79 * time.Second},
+			urlTypes:  []string{"video", "video"},
+			wantTypes: []string{"video", "short"},
+		},
+		{
+			name:      "gap exactly 80s is not a short",
+			gaps:      []time.Duration{0, 80 * time.Second},
+			urlTypes:  []string{"video", "video"},
+			wantTypes: []string{"video", "video"},
+		},
+		{
+			name:      "gap over 80s is not a short",
+			gaps:      []time.Duration{0, 5 * time.Minute},
+			urlTypes:  []string{"video", "video"},
+			wantTypes: []string{"video", "video"},
+		},
+		{
+			name:      "already-short from URL is unchanged",
+			gaps:      []time.Duration{0, 30 * time.Second},
+			urlTypes:  []string{"video", "short"},
+			wantTypes: []string{"video", "short"},
+		},
+		{
+			name:      "chain: middle video suppressed by exit rule, last one qualifies",
+			gaps:      []time.Duration{0, 10 * time.Second, 15 * time.Second, 5 * time.Minute},
+			urlTypes:  []string{"video", "video", "video", "video"},
+			wantTypes: []string{"video", "video", "short", "video"},
+		},
+		{
+			name:      "exit gap exactly 90s is not suppressed",
+			gaps:      []time.Duration{0, 79 * time.Second, 90 * time.Second},
+			urlTypes:  []string{"video", "video", "video"},
+			wantTypes: []string{"video", "short", "video"},
+		},
+		{
+			name:      "exit gap under 90s suppresses short",
+			gaps:      []time.Duration{0, 79 * time.Second, 89 * time.Second},
+			urlTypes:  []string{"video", "video", "video"},
+			wantTypes: []string{"video", "video", "video"},
+		},
+		{
+			name:      "last video in list has no exit gap — qualifies as short",
+			gaps:      []time.Duration{0, 30 * time.Second},
+			urlTypes:  []string{"video", "video"},
+			wantTypes: []string{"video", "short"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			videos := make([]VideoInfo, len(tc.urlTypes))
+			ts := base
+			for i := range videos {
+				if i > 0 {
+					ts = ts.Add(tc.gaps[i])
+				}
+				videos[i] = VideoInfo{
+					VideoID:   fmt.Sprintf("vid%d", i),
+					Type:      tc.urlTypes[i],
+					WatchedAt: ts,
+				}
+			}
+			markShortsFromTiming(videos)
+			for i, v := range videos {
+				if v.Type != tc.wantTypes[i] {
+					t.Errorf("videos[%d].Type = %q, want %q", i, v.Type, tc.wantTypes[i])
+				}
+			}
+		})
+	}
+}
+
+func TestParseEntries_TimingShortDetection(t *testing.T) {
+	base := mustTime("2026-05-10T10:00:00.000Z")
+	data := buildJSON([]map[string]any{
+		{
+			"title":    "Watched Long Video",
+			"titleUrl": "https://www.youtube.com/watch?v=longvid1",
+			"time":     base.Format(time.RFC3339Nano),
+		},
+		{
+			// started 30s later — short via timing
+			"title":    "Watched Quick Video",
+			"titleUrl": "https://www.youtube.com/watch?v=quickvid",
+			"time":     base.Add(30 * time.Second).Format(time.RFC3339Nano),
+		},
+		{
+			// started 10 minutes later — regular video
+			"title":    "Watched Later Video",
+			"titleUrl": "https://www.youtube.com/watch?v=latervid",
+			"time":     base.Add(10 * time.Minute).Format(time.RFC3339Nano),
+		},
+	})
+
+	videos, err := ParseEntries(data, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(videos) != 3 {
+		t.Fatalf("got %d videos, want 3", len(videos))
+	}
+	// output is sorted ascending
+	if videos[0].Type != "video" {
+		t.Errorf("videos[0].Type = %q, want video", videos[0].Type)
+	}
+	if videos[1].Type != "short" {
+		t.Errorf("videos[1].Type = %q, want short (< 80s gap)", videos[1].Type)
+	}
+	if videos[2].Type != "video" {
+		t.Errorf("videos[2].Type = %q, want video (10m gap)", videos[2].Type)
+	}
+}
+
+func TestParseEntries_HashtagShort(t *testing.T) {
+	tests := []struct {
+		title    string
+		wantType string
+	}{
+		{"My video #shorts", "short"},
+		{"My video #short", "short"},
+		{"My video #Shorts", "short"},
+		{"My video #SHORT", "short"},
+		{"Normal video title", "video"},
+	}
+	for _, tc := range tests {
+		data := buildJSON([]map[string]any{{
+			"title":    "Watched " + tc.title,
+			"titleUrl": "https://www.youtube.com/watch?v=abc123",
+			"time":     "2026-05-10T10:00:00.000Z",
+		}})
+		videos, err := ParseEntries(data, time.Time{})
+		if err != nil {
+			t.Fatalf("%q: %v", tc.title, err)
+		}
+		if len(videos) != 1 {
+			t.Fatalf("%q: got %d videos, want 1", tc.title, len(videos))
+		}
+		if videos[0].Type != tc.wantType {
+			t.Errorf("%q: Type = %q, want %q", tc.title, videos[0].Type, tc.wantType)
+		}
 	}
 }

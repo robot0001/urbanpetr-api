@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -271,8 +272,88 @@ func ListActiveYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFu
 	return listHandler(log, db, "WHERE h.active = TRUE")
 }
 
+func parseVideoType(r *http.Request) *string {
+	vt := r.URL.Query().Get("type")
+	if vt == "video" || vt == "short" {
+		return &vt
+	}
+	return nil
+}
+
 func ListAllYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
-	return listHandler(log, db, "")
+	return func(w http.ResponseWriter, r *http.Request) {
+		page, ipp := parsePage(r)
+		sortDir := parseSort(r)
+		offset := (page - 1) * ipp
+		vtype := parseVideoType(r)
+
+		var total int
+		if vtype != nil {
+			if err := db.QueryRow(r.Context(), `
+				SELECT COUNT(*) FROM youtube_history h
+				JOIN youtube_video v ON v.id = h.id_youtube_video
+				WHERE v.type = $1::youtube_video_type`,
+				*vtype,
+			).Scan(&total); err != nil {
+				log.Error("count youtube_history", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			if err := db.QueryRow(r.Context(), `SELECT COUNT(*) FROM youtube_history h`).Scan(&total); err != nil {
+				log.Error("count youtube_history", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		whereClause := ""
+		listArgs := []any{ipp, offset}
+		if vtype != nil {
+			whereClause = "WHERE v.type = $3::youtube_video_type"
+			listArgs = append(listArgs, *vtype)
+		}
+		lq := fmt.Sprintf(`
+SELECT
+    h.uuid, h.active, h.watched_at, h.comment, h.custom_tags,
+    v.uuid, v.video_id, v.type, v.title, v.channel, v.channel_url,
+    v.thumbnail_url, v.description, v.duration_seconds,
+    v.published_at, v.view_count, v.like_count, v.tags
+FROM youtube_history h
+JOIN youtube_video v ON v.id = h.id_youtube_video
+%s
+ORDER BY h.watched_at %s
+LIMIT $1 OFFSET $2`, whereClause, sortDir)
+
+		rows, err := db.Query(r.Context(), lq, listArgs...)
+		if err != nil {
+			log.Error("query youtube_history", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		items, err := scanRows(rows)
+		if err != nil {
+			log.Error("scan youtube_history", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		if items == nil {
+			items = []youtubeHistoryItemResp{}
+		}
+
+		pages := int(math.Ceil(float64(total) / float64(ipp)))
+		writeJSON(w, http.StatusOK, listResp{
+			Items: items,
+			Pagination: paginationResp{
+				PagesTotal:   pages,
+				ItemsTotal:   total,
+				Page:         page,
+				ItemsPerPage: ipp,
+			},
+		})
+	}
 }
 
 func GetYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
@@ -364,6 +445,134 @@ WHERE h.uuid = $1`
 	}
 }
 
+const autoEnrichLimit = 500
+
+func applyEnrichment(ctx context.Context, db *pgxpool.Pool, dbID int64, currentType string, d youtube.VideoDetails) error {
+	var thumbnailURL *string
+	if d.ThumbnailURL != "" {
+		thumbnailURL = &d.ThumbnailURL
+	}
+	var description *string
+	if d.Description != "" {
+		description = &d.Description
+	}
+	var durationSeconds *int
+	if d.DurationSeconds > 0 {
+		durationSeconds = &d.DurationSeconds
+	}
+	var publishedAt *time.Time
+	if !d.PublishedAt.IsZero() {
+		publishedAt = &d.PublishedAt
+	}
+	var viewCount *int64
+	if d.ViewCount > 0 {
+		viewCount = &d.ViewCount
+	}
+	var likeCount *int64
+	if d.LikeCount > 0 {
+		likeCount = &d.LikeCount
+	}
+	var tags []string
+	if len(d.Tags) > 0 {
+		tags = d.Tags
+	}
+
+	newType := currentType
+	if currentType == "short" && d.DurationSeconds > 80 {
+		newType = "video"
+	}
+
+	_, err := db.Exec(ctx, `
+		UPDATE youtube_video SET
+			thumbnail_url    = $1,
+			description      = $2,
+			duration_seconds = $3,
+			published_at     = $4,
+			view_count       = $5,
+			like_count       = $6,
+			tags             = $7,
+			type             = $8::youtube_video_type,
+			enriched_at      = NOW()
+		WHERE id = $9
+	`, thumbnailURL, description, durationSeconds, publishedAt, viewCount, likeCount, tags, newType, dbID)
+	return err
+}
+
+func enrichLatest(ctx context.Context, log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) int {
+	if yt == nil {
+		return 0
+	}
+
+	rows, err := db.Query(ctx, `
+		WITH latest AS (
+			SELECT v.id, v.video_id, v.type::text AS type,
+			       MAX(h.watched_at) AS last_watched
+			FROM youtube_history h
+			JOIN youtube_video v ON v.id = h.id_youtube_video
+			WHERE v.enriched_at IS NULL
+			GROUP BY v.id, v.video_id, v.type
+			ORDER BY last_watched DESC
+			LIMIT $1
+		)
+		SELECT id, video_id, type FROM latest
+	`, autoEnrichLimit)
+	if err != nil {
+		log.Error("enrichLatest: query", "error", err)
+		return 0
+	}
+
+	type videoRow struct {
+		dbID        int64
+		videoID     string
+		currentType string
+	}
+	var videos []videoRow
+	for rows.Next() {
+		var v videoRow
+		if err := rows.Scan(&v.dbID, &v.videoID, &v.currentType); err != nil {
+			rows.Close()
+			log.Error("enrichLatest: scan", "error", err)
+			return 0
+		}
+		videos = append(videos, v)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		log.Error("enrichLatest: rows", "error", err)
+		return 0
+	}
+
+	enriched := 0
+	for i := 0; i < len(videos); i += 50 {
+		chunk := videos[i:min(i+50, len(videos))]
+
+		ids := make([]string, len(chunk))
+		for j, v := range chunk {
+			ids[j] = v.videoID
+		}
+
+		details, err := yt.Enrich(ctx, ids)
+		if err != nil {
+			log.Error("enrichLatest: youtube API", "error", err)
+			continue
+		}
+
+		for _, v := range chunk {
+			d, ok := details[v.videoID]
+			if !ok {
+				continue
+			}
+			if err := applyEnrichment(ctx, db, v.dbID, v.currentType, d); err != nil {
+				log.Error("enrichLatest: update", "error", err, "video_id", v.videoID)
+				continue
+			}
+			enriched++
+		}
+	}
+
+	return enriched
+}
+
 func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if yt == nil {
@@ -373,13 +582,14 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 
 		uuid := chi.URLParam(r, "uuid")
 
-		var videoID string
+		var videoID, currentType string
+		var dbID int64
 		err := db.QueryRow(r.Context(), `
-			SELECT v.video_id
+			SELECT v.id, v.video_id, v.type::text
 			FROM youtube_history h
 			JOIN youtube_video v ON v.id = h.id_youtube_video
 			WHERE h.uuid = $1
-		`, uuid).Scan(&videoID)
+		`, uuid).Scan(&dbID, &videoID, &currentType)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
@@ -403,48 +613,7 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			return
 		}
 
-		var thumbnailURL *string
-		if d.ThumbnailURL != "" {
-			thumbnailURL = &d.ThumbnailURL
-		}
-		var description *string
-		if d.Description != "" {
-			description = &d.Description
-		}
-		var durationSeconds *int
-		if d.DurationSeconds > 0 {
-			durationSeconds = &d.DurationSeconds
-		}
-		var publishedAt *time.Time
-		if !d.PublishedAt.IsZero() {
-			publishedAt = &d.PublishedAt
-		}
-		var viewCount *int64
-		if d.ViewCount > 0 {
-			viewCount = &d.ViewCount
-		}
-		var likeCount *int64
-		if d.LikeCount > 0 {
-			likeCount = &d.LikeCount
-		}
-		var tags []string
-		if len(d.Tags) > 0 {
-			tags = d.Tags
-		}
-
-		_, err = db.Exec(r.Context(), `
-			UPDATE youtube_video SET
-				thumbnail_url    = $1,
-				description      = $2,
-				duration_seconds = $3,
-				published_at     = $4,
-				view_count       = $5,
-				like_count       = $6,
-				tags             = $7,
-				enriched_at      = NOW()
-			WHERE video_id = $8
-		`, thumbnailURL, description, durationSeconds, publishedAt, viewCount, likeCount, tags, videoID)
-		if err != nil {
+		if err := applyEnrichment(r.Context(), db, dbID, currentType, d); err != nil {
 			log.Error("enrich: db update", "error", err, "video_id", videoID)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
@@ -457,6 +626,7 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 type activateBody struct {
 	Comment    *string  `json:"comment"`
 	CustomTags []string `json:"custom_tags"`
+	VideoType  *string  `json:"video_type"`
 }
 
 func ActivateYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
@@ -508,6 +678,23 @@ func UpdateYoutubeHistoryDetails(log *slog.Logger, db *pgxpool.Pool) http.Handle
 		}
 		if body.CustomTags == nil {
 			body.CustomTags = []string{}
+		}
+
+		if body.VideoType != nil {
+			vt := *body.VideoType
+			if vt != "video" && vt != "short" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid video_type"})
+				return
+			}
+			_, err := db.Exec(r.Context(), `
+				UPDATE youtube_video SET type = $1::youtube_video_type
+				WHERE id = (SELECT id_youtube_video FROM youtube_history WHERE uuid = $2)
+			`, vt, uuid)
+			if err != nil {
+				log.Error("update video type", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
 		}
 
 		tag, err := db.Exec(r.Context(),
