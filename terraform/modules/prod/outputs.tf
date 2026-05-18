@@ -22,3 +22,8 @@ output "cognito_hosted_ui_domain" {
   value       = "${aws_cognito_user_pool_domain.main.domain}.auth.eu-central-1.amazoncognito.com"
   description = "Hosted UI domain — set as NUXT_PUBLIC_COGNITO_DOMAIN in GitHub Actions and local .env."
 }
+
+output "eic_endpoint_id" {
+  value       = aws_ec2_instance_connect_endpoint.main.id
+  description = "EC2 Instance Connect Endpoint ID — used by db-tunnel.sh to open a local tunnel to RDS."
+}
