@@ -39,7 +39,7 @@ func NewRouter(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client, jwtMiddle
 		r.Use(jwtMiddleware.Require("urbanpetr_admin"))
 		r.Get("/v1/history/youtube/all",                ListAllYoutubeHistory(log, db))
 		r.Get("/v1/history/youtube/{uuid}",             GetYoutubeHistory(log, db))
-		r.Post("/v1/history/youtube/ingest",             IngestYoutubeHistory(log, db))
+		r.Post("/v1/history/youtube/ingest",             IngestYoutubeHistory(log, db, yt))
 		r.Post("/v1/history/youtube/{uuid}/activate",   ActivateYoutubeHistory(log, db))
 		r.Post("/v1/history/youtube/{uuid}/deactivate", DeactivateYoutubeHistory(log, db))
 		r.Patch("/v1/history/youtube/{uuid}",            UpdateYoutubeHistoryDetails(log, db))

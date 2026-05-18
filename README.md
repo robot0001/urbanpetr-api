@@ -109,6 +109,43 @@ CREATE TABLE thing (
 CREATE UNIQUE INDEX thing_uuid_idx ON thing (uuid);
 ```
 
+## YouTube watch history
+
+### Ingestion
+
+Upload a Google Takeout zip via `POST /v1/history/youtube/ingest`. The handler:
+
+1. Extracts the `.json` file from the zip
+2. Parses entries and classifies each as `video` or `short` (see below)
+3. Upserts into `youtube_video` and inserts new rows into `youtube_history`
+4. Auto-enriches the latest 100 un-enriched videos (see below)
+
+The response includes `total` (parsed entries), `created` (new history rows), and `enriched` (videos fetched from the YouTube API in this run).
+
+### Short detection
+
+Three rules are applied in order during parsing. Once a video is classified as `short` by any rule it stays that way.
+
+**1. URL prefix** — `/shorts/<id>` URLs are definitively shorts.
+
+**2. Hashtag in title** — if the title contains `#short` or `#shorts` (case-insensitive) the video is always a short.
+
+**3. Timing heuristic** — after all entries are sorted by `watched_at` ascending, consecutive pairs are examined:
+- If the gap since the previous watch is **< 80 seconds**, the video is a short candidate.
+- But if the *next* video started **< 90 seconds** later, the candidate is dropped — this filters false positives where the user quickly abandoned a regular video and moved on.
+
+The net effect: a timing-based short must have started rapidly *and* the user must have spent at least 90 seconds on it before switching away.
+
+**Post-enrich correction** — when details are fetched from the YouTube API, any `short` with `duration_seconds > 80` is reverted to `video`. This catches videos that were misclassified by the timing heuristic (e.g. the user paused between two long videos).
+
+### Auto-enrichment
+
+After every ingest the API fetches YouTube metadata for the **100 most recently watched un-enriched videos** (`enriched_at IS NULL`), in two batches of 50. The YouTube Data API v3 allows up to 50 IDs per `videos.list` call (1 quota unit per call regardless of batch size), so 100 videos costs 2 units.
+
+Videos already enriched (`enriched_at IS NOT NULL`) are skipped. Individual videos can also be enriched on demand via `POST /v1/history/youtube/{uuid}/enrich`.
+
+The auto-enrich limit (`autoEnrichLimit = 100`) and batch size (50, dictated by the YouTube API) will be tuned as needed.
+
 ## Endpoints
 
 | Method | Path | Description |

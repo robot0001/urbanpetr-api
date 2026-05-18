@@ -12,9 +12,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/robot0001/urbanpetr-api/internal/ingest"
+	"github.com/robot0001/urbanpetr-api/internal/youtube"
 )
 
-func IngestYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
+func IngestYoutubeHistory(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid multipart form"})
@@ -54,7 +55,8 @@ func IngestYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, map[string]int{"total": total, "created": created})
+		enriched := enrichLatest(r.Context(), log, db, yt)
+		writeJSON(w, http.StatusOK, map[string]int{"total": total, "created": created, "enriched": enriched})
 	}
 }
 
