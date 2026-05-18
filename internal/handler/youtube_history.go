@@ -287,18 +287,31 @@ func ListAllYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc 
 		vtype := parseVideoType(r)
 
 		var total int
-		if err := db.QueryRow(r.Context(), `
-			SELECT COUNT(*)
-			FROM youtube_history h
-			JOIN youtube_video v ON v.id = h.id_youtube_video
-			WHERE $1::text IS NULL OR v.type::text = $1`,
-			vtype,
-		).Scan(&total); err != nil {
-			log.Error("count youtube_history", "error", err)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
+		if vtype != nil {
+			if err := db.QueryRow(r.Context(), `
+				SELECT COUNT(*) FROM youtube_history h
+				JOIN youtube_video v ON v.id = h.id_youtube_video
+				WHERE v.type = $1::youtube_video_type`,
+				*vtype,
+			).Scan(&total); err != nil {
+				log.Error("count youtube_history", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			if err := db.QueryRow(r.Context(), `SELECT COUNT(*) FROM youtube_history h`).Scan(&total); err != nil {
+				log.Error("count youtube_history", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
 		}
 
+		whereClause := ""
+		listArgs := []any{ipp, offset}
+		if vtype != nil {
+			whereClause = "WHERE v.type = $3::youtube_video_type"
+			listArgs = append(listArgs, *vtype)
+		}
 		lq := fmt.Sprintf(`
 SELECT
     h.uuid, h.active, h.watched_at, h.comment, h.custom_tags,
@@ -307,11 +320,11 @@ SELECT
     v.published_at, v.view_count, v.like_count, v.tags
 FROM youtube_history h
 JOIN youtube_video v ON v.id = h.id_youtube_video
-WHERE $3::text IS NULL OR v.type::text = $3
+%s
 ORDER BY h.watched_at %s
-LIMIT $1 OFFSET $2`, sortDir)
+LIMIT $1 OFFSET $2`, whereClause, sortDir)
 
-		rows, err := db.Query(r.Context(), lq, ipp, offset, vtype)
+		rows, err := db.Query(r.Context(), lq, listArgs...)
 		if err != nil {
 			log.Error("query youtube_history", "error", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
