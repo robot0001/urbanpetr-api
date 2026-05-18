@@ -57,6 +57,9 @@ func ParseEntries(data []byte, cutoff time.Time) ([]VideoInfo, error) {
 		}
 
 		title := strings.TrimPrefix(e.Title, "Watched ")
+		if strings.Contains(strings.ToLower(title), "#short") {
+			vtype = "short"
+		}
 
 		var channel *string
 		var channelURL *string
@@ -105,23 +108,32 @@ func ExtractVideoID(rawURL string) (id, vtype string, ok bool) {
 }
 
 const (
-	batchSize            = 1000
-	shortDetectionWindow = 80 * time.Second
+	batchSize        = 1000
+	shortEntryWindow = 80 * time.Second
+	shortExitWindow  = 90 * time.Second
 )
 
 // markShortsFromTiming upgrades a video's type to "short" when it was started
-// less than shortDetectionWindow after the preceding watch event — a reliable
-// signal that the user was browsing the Shorts feed. videos must be sorted by
-// WatchedAt ascending.
+// less than shortEntryWindow after the preceding watch event, provided the next
+// video did not also start within shortExitWindow — the latter filters out cases
+// where the user quickly abandoned a regular video mid-play. videos must be
+// sorted by WatchedAt ascending.
 func markShortsFromTiming(videos []VideoInfo) {
 	for i := 1; i < len(videos); i++ {
 		if videos[i].Type == "short" {
 			continue
 		}
-		gap := videos[i].WatchedAt.Sub(videos[i-1].WatchedAt)
-		if gap >= 0 && gap < shortDetectionWindow {
-			videos[i].Type = "short"
+		entryGap := videos[i].WatchedAt.Sub(videos[i-1].WatchedAt)
+		if entryGap < 0 || entryGap >= shortEntryWindow {
+			continue
 		}
+		if i+1 < len(videos) {
+			exitGap := videos[i+1].WatchedAt.Sub(videos[i].WatchedAt)
+			if exitGap >= 0 && exitGap < shortExitWindow {
+				continue
+			}
+		}
+		videos[i].Type = "short"
 	}
 }
 

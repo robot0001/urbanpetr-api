@@ -293,10 +293,28 @@ func TestMarkShortsFromTiming(t *testing.T) {
 			wantTypes: []string{"video", "short"},
 		},
 		{
-			name:      "chain: rapid succession marks multiple shorts",
+			name:      "chain: middle video suppressed by exit rule, last one qualifies",
 			gaps:      []time.Duration{0, 10 * time.Second, 15 * time.Second, 5 * time.Minute},
 			urlTypes:  []string{"video", "video", "video", "video"},
-			wantTypes: []string{"video", "short", "short", "video"},
+			wantTypes: []string{"video", "video", "short", "video"},
+		},
+		{
+			name:      "exit gap exactly 90s is not suppressed",
+			gaps:      []time.Duration{0, 79 * time.Second, 90 * time.Second},
+			urlTypes:  []string{"video", "video", "video"},
+			wantTypes: []string{"video", "short", "video"},
+		},
+		{
+			name:      "exit gap under 90s suppresses short",
+			gaps:      []time.Duration{0, 79 * time.Second, 89 * time.Second},
+			urlTypes:  []string{"video", "video", "video"},
+			wantTypes: []string{"video", "video", "video"},
+		},
+		{
+			name:      "last video in list has no exit gap — qualifies as short",
+			gaps:      []time.Duration{0, 30 * time.Second},
+			urlTypes:  []string{"video", "video"},
+			wantTypes: []string{"video", "short"},
 		},
 	}
 
@@ -362,5 +380,35 @@ func TestParseEntries_TimingShortDetection(t *testing.T) {
 	}
 	if videos[2].Type != "video" {
 		t.Errorf("videos[2].Type = %q, want video (10m gap)", videos[2].Type)
+	}
+}
+
+func TestParseEntries_HashtagShort(t *testing.T) {
+	tests := []struct {
+		title    string
+		wantType string
+	}{
+		{"My video #shorts", "short"},
+		{"My video #short", "short"},
+		{"My video #Shorts", "short"},
+		{"My video #SHORT", "short"},
+		{"Normal video title", "video"},
+	}
+	for _, tc := range tests {
+		data := buildJSON([]map[string]any{{
+			"title":    "Watched " + tc.title,
+			"titleUrl": "https://www.youtube.com/watch?v=abc123",
+			"time":     "2026-05-10T10:00:00.000Z",
+		}})
+		videos, err := ParseEntries(data, time.Time{})
+		if err != nil {
+			t.Fatalf("%q: %v", tc.title, err)
+		}
+		if len(videos) != 1 {
+			t.Fatalf("%q: got %d videos, want 1", tc.title, len(videos))
+		}
+		if videos[0].Type != tc.wantType {
+			t.Errorf("%q: Type = %q, want %q", tc.title, videos[0].Type, tc.wantType)
+		}
 	}
 }
