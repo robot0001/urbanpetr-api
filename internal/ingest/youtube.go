@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -77,6 +78,10 @@ func ParseEntries(data []byte, cutoff time.Time) ([]VideoInfo, error) {
 			WatchedAt:  watchedAt,
 		})
 	}
+	sort.Slice(videos, func(i, j int) bool {
+		return videos[i].WatchedAt.Before(videos[j].WatchedAt)
+	})
+	markShortsFromTiming(videos)
 	return videos, nil
 }
 
@@ -99,7 +104,26 @@ func ExtractVideoID(rawURL string) (id, vtype string, ok bool) {
 	return v, "video", true
 }
 
-const batchSize = 1000
+const (
+	batchSize            = 1000
+	shortDetectionWindow = 80 * time.Second
+)
+
+// markShortsFromTiming upgrades a video's type to "short" when it was started
+// less than shortDetectionWindow after the preceding watch event — a reliable
+// signal that the user was browsing the Shorts feed. videos must be sorted by
+// WatchedAt ascending.
+func markShortsFromTiming(videos []VideoInfo) {
+	for i := 1; i < len(videos); i++ {
+		if videos[i].Type == "short" {
+			continue
+		}
+		gap := videos[i].WatchedAt.Sub(videos[i-1].WatchedAt)
+		if gap >= 0 && gap < shortDetectionWindow {
+			videos[i].Type = "short"
+		}
+	}
+}
 
 // Ingest upserts videos and inserts new history rows in batches of 1000.
 // Returns total parsed entries and how many new history rows were created.

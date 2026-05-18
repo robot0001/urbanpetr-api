@@ -271,8 +271,75 @@ func ListActiveYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFu
 	return listHandler(log, db, "WHERE h.active = TRUE")
 }
 
+func parseVideoType(r *http.Request) *string {
+	vt := r.URL.Query().Get("type")
+	if vt == "video" || vt == "short" {
+		return &vt
+	}
+	return nil
+}
+
 func ListAllYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
-	return listHandler(log, db, "")
+	return func(w http.ResponseWriter, r *http.Request) {
+		page, ipp := parsePage(r)
+		sortDir := parseSort(r)
+		offset := (page - 1) * ipp
+		vtype := parseVideoType(r)
+
+		var total int
+		if err := db.QueryRow(r.Context(), `
+			SELECT COUNT(*)
+			FROM youtube_history h
+			JOIN youtube_video v ON v.id = h.id_youtube_video
+			WHERE $1::text IS NULL OR v.type::text = $1`,
+			vtype,
+		).Scan(&total); err != nil {
+			log.Error("count youtube_history", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		lq := fmt.Sprintf(`
+SELECT
+    h.uuid, h.active, h.watched_at, h.comment, h.custom_tags,
+    v.uuid, v.video_id, v.type, v.title, v.channel, v.channel_url,
+    v.thumbnail_url, v.description, v.duration_seconds,
+    v.published_at, v.view_count, v.like_count, v.tags
+FROM youtube_history h
+JOIN youtube_video v ON v.id = h.id_youtube_video
+WHERE $3::text IS NULL OR v.type::text = $3
+ORDER BY h.watched_at %s
+LIMIT $1 OFFSET $2`, sortDir)
+
+		rows, err := db.Query(r.Context(), lq, ipp, offset, vtype)
+		if err != nil {
+			log.Error("query youtube_history", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		items, err := scanRows(rows)
+		if err != nil {
+			log.Error("scan youtube_history", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		if items == nil {
+			items = []youtubeHistoryItemResp{}
+		}
+
+		pages := int(math.Ceil(float64(total) / float64(ipp)))
+		writeJSON(w, http.StatusOK, listResp{
+			Items: items,
+			Pagination: paginationResp{
+				PagesTotal:   pages,
+				ItemsTotal:   total,
+				Page:         page,
+				ItemsPerPage: ipp,
+			},
+		})
+	}
 }
 
 func GetYoutubeHistory(log *slog.Logger, db *pgxpool.Pool) http.HandlerFunc {
