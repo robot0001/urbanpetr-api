@@ -4,7 +4,7 @@
 
 resource "aws_security_group" "eic_endpoint" {
   name        = "${var.project_name}-${var.environment}-eic-endpoint"
-  description = "EC2 Instance Connect Endpoint — egress to RDS only"
+  description = "EC2 Instance Connect Endpoint - egress to RDS only"
   vpc_id      = local.vpc_id
 
   tags = merge(local.common_tags, {
