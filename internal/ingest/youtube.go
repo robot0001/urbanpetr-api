@@ -109,8 +109,8 @@ func ExtractVideoID(rawURL string) (id, vtype string, ok bool) {
 
 const (
 	batchSize        = 1000
-	shortEntryWindow = 80 * time.Second
-	shortExitWindow  = 90 * time.Second
+	shortEntryWindow = 150 * time.Second
+	shortExitWindow  = 160 * time.Second
 )
 
 // markShortsFromTiming upgrades a video's type to "short" when it was started

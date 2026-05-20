@@ -269,19 +269,19 @@ func TestMarkShortsFromTiming(t *testing.T) {
 			wantTypes: []string{"video"},
 		},
 		{
-			name:      "gap under 80s marks as short",
-			gaps:      []time.Duration{0, 79 * time.Second},
+			name:      "gap under 150s marks as short",
+			gaps:      []time.Duration{0, 149 * time.Second},
 			urlTypes:  []string{"video", "video"},
 			wantTypes: []string{"video", "short"},
 		},
 		{
-			name:      "gap exactly 80s is not a short",
-			gaps:      []time.Duration{0, 80 * time.Second},
+			name:      "gap exactly 150s is not a short",
+			gaps:      []time.Duration{0, 150 * time.Second},
 			urlTypes:  []string{"video", "video"},
 			wantTypes: []string{"video", "video"},
 		},
 		{
-			name:      "gap over 80s is not a short",
+			name:      "gap over 150s is not a short",
 			gaps:      []time.Duration{0, 5 * time.Minute},
 			urlTypes:  []string{"video", "video"},
 			wantTypes: []string{"video", "video"},
@@ -299,14 +299,14 @@ func TestMarkShortsFromTiming(t *testing.T) {
 			wantTypes: []string{"video", "video", "short", "video"},
 		},
 		{
-			name:      "exit gap exactly 90s is not suppressed",
-			gaps:      []time.Duration{0, 79 * time.Second, 90 * time.Second},
+			name:      "exit gap exactly 160s is not suppressed",
+			gaps:      []time.Duration{0, 149 * time.Second, 160 * time.Second},
 			urlTypes:  []string{"video", "video", "video"},
 			wantTypes: []string{"video", "short", "video"},
 		},
 		{
-			name:      "exit gap under 90s suppresses short",
-			gaps:      []time.Duration{0, 79 * time.Second, 89 * time.Second},
+			name:      "exit gap under 160s suppresses short",
+			gaps:      []time.Duration{0, 149 * time.Second, 159 * time.Second},
 			urlTypes:  []string{"video", "video", "video"},
 			wantTypes: []string{"video", "video", "video"},
 		},
@@ -376,7 +376,7 @@ func TestParseEntries_TimingShortDetection(t *testing.T) {
 		t.Errorf("videos[0].Type = %q, want video", videos[0].Type)
 	}
 	if videos[1].Type != "short" {
-		t.Errorf("videos[1].Type = %q, want short (< 80s gap)", videos[1].Type)
+		t.Errorf("videos[1].Type = %q, want short (< 150s gap)", videos[1].Type)
 	}
 	if videos[2].Type != "video" {
 		t.Errorf("videos[2].Type = %q, want video (10m gap)", videos[2].Type)

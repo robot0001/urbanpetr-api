@@ -478,10 +478,10 @@ func applyEnrichment(ctx context.Context, db *pgxpool.Pool, dbID int64, currentT
 	}
 
 	newType := currentType
-	if currentType == "short" && d.DurationSeconds > 80 {
+	if currentType == "short" && d.DurationSeconds > 150 {
 		newType = "video"
 	}
-	if currentType == "video" && d.DurationSeconds > 0 && d.DurationSeconds < 80 {
+	if currentType == "video" && d.DurationSeconds > 0 && d.DurationSeconds < 150 {
 		newType = "short"
 	}
 
