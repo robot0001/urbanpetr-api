@@ -23,7 +23,3 @@ output "cognito_hosted_ui_domain" {
   description = "Hosted UI domain — set as NUXT_PUBLIC_COGNITO_DOMAIN in GitHub Actions and local .env."
 }
 
-output "ssm_bastion_instance_id" {
-  value       = aws_instance.ssm_bastion.id
-  description = "SSM bastion instance ID — used by db-tunnel.sh to open a local tunnel to RDS via SSM Session Manager."
-}
