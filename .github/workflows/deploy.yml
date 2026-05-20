@@ -393,6 +393,42 @@ jobs:
         working-directory: terraform/envs/stable-staging
         run: terraform apply -auto-approve -input=false
 
+      - name: Capture API Gateway DNS outputs
+        id: tf_out
+        working-directory: terraform/envs/stable-staging
+        run: |
+          echo "target=$(terraform output -raw api_gateway_target_domain)" >> "$GITHUB_OUTPUT"
+          echo "zone=$(terraform output -raw api_gateway_hosted_zone_id)" >> "$GITHUB_OUTPUT"
+
+      - name: Switch to prod credentials (Route53)
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upsert Route53 ALIAS for api-staging.urbanpetr.com
+        run: |
+          ZONE_ID=$(aws route53 list-hosted-zones-by-name \
+            --dns-name "urbanpetr.com." \
+            --query "HostedZones[?Name=='urbanpetr.com.'].Id" \
+            --output text | sed 's|/hostedzone/||')
+          aws route53 change-resource-record-sets \
+            --hosted-zone-id "$ZONE_ID" \
+            --change-batch "{
+              \"Changes\": [{
+                \"Action\": \"UPSERT\",
+                \"ResourceRecordSet\": {
+                  \"Name\": \"api-staging.urbanpetr.com\",
+                  \"Type\": \"A\",
+                  \"AliasTarget\": {
+                    \"HostedZoneId\": \"${{ steps.tf_out.outputs.zone }}\",
+                    \"DNSName\": \"${{ steps.tf_out.outputs.target }}\",
+                    \"EvaluateTargetHealth\": false
+                  }
+                }
+              }]
+            }"
+
   update_lambdas_stable_staging:
     name: Update Lambda code (stable-staging)
     runs-on: ubuntu-latest
