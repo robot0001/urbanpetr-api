@@ -481,6 +481,9 @@ func applyEnrichment(ctx context.Context, db *pgxpool.Pool, dbID int64, currentT
 	if currentType == "short" && d.DurationSeconds > 80 {
 		newType = "video"
 	}
+	if currentType == "video" && d.DurationSeconds > 0 && d.DurationSeconds < 80 {
+		newType = "short"
+	}
 
 	_, err := db.Exec(ctx, `
 		UPDATE youtube_video SET
