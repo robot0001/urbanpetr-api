@@ -18,7 +18,14 @@ import (
 func NewRouter(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client, jwtMiddleware *auth.JWTMiddleware) *chi.Mux {
 	origins := []string{"https://urbanpetr.com", "https://*.urbanpetr.com"}
 	if os.Getenv("ENVIRONMENT") == "local" {
-		origins = append(origins, "http://localhost:3000", "http://localhost:*")
+		origins = append(origins,
+			"http://localhost:3000",
+			"http://localhost:*",
+			"http://urbanpetr.home",
+			"https://urbanpetr.home",
+			"http://admin.urbanpetr.home",
+			"https://admin.urbanpetr.home",
+		)
 	}
 
 	r := chi.NewRouter()
