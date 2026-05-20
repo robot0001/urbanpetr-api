@@ -21,9 +21,7 @@ func NewRouter(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client, jwtMiddle
 		origins = append(origins,
 			"http://localhost:3000",
 			"http://localhost:*",
-			"http://urbanpetr.home",
 			"https://urbanpetr.home",
-			"http://admin.urbanpetr.home",
 			"https://admin.urbanpetr.home",
 		)
 	}
