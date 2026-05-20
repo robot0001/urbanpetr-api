@@ -11,7 +11,7 @@
 #   psql "host=localhost port=<local_port> dbname=<dbname> user=<user> password=<pass>"
 #
 # Requirements:
-#   aws CLI >= 2.13  (adds ec2-instance-connect start-secure-tunnel)
+#   aws CLI >= 2.13  (adds ec2-instance-connect open-tunnel)
 #   IAM permission: ec2-instance-connect:OpenTunnel on the EIC endpoint
 
 set -euo pipefail
@@ -58,9 +58,8 @@ echo ""
 echo "Tunnel open — press Ctrl-C to close."
 echo ""
 
-aws ec2-instance-connect start-secure-tunnel \
+aws ec2-instance-connect open-tunnel \
   --instance-connect-endpoint-id "$EIC_ID" \
-  --instance-id "i-placeholder" \
-  --target-ip-address "$RDS_IP" \
-  --port "$RDS_PORT" \
+  --private-ip-address "$RDS_IP" \
+  --remote-port "$RDS_PORT" \
   --local-port "$LOCAL_PORT"
