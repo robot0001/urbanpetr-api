@@ -18,7 +18,7 @@ set -euo pipefail
 
 LOCAL_PORT="${1:-5433}"
 SECRET_ID="urbanpetr/api/db/migrator"
-BASTION_TAG="urbanpetr-api-prod-ssm-bastion"
+BASTION_TAG="urbanpetr-prod-ssm-bastion"
 export AWS_PROFILE="${AWS_PROFILE:-terraform}"
 
 echo "Looking up SSM bastion ($BASTION_TAG)..."
