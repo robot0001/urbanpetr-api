@@ -582,14 +582,14 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 
 		uuid := chi.URLParam(r, "uuid")
 
-		var videoID, currentType string
-		var dbID int64
+		var targetDBID int64
+		var targetVideoID, targetCurrentType string
 		err := db.QueryRow(r.Context(), `
 			SELECT v.id, v.video_id, v.type::text
 			FROM youtube_history h
 			JOIN youtube_video v ON v.id = h.id_youtube_video
 			WHERE h.uuid = $1
-		`, uuid).Scan(&dbID, &videoID, &currentType)
+		`, uuid).Scan(&targetDBID, &targetVideoID, &targetCurrentType)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
@@ -600,26 +600,86 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			return
 		}
 
-		details, err := yt.Enrich(r.Context(), []string{videoID})
+		// Fetch up to 50 unenriched videos starting from the target to amortise API quota.
+		type videoRow struct {
+			dbID        int64
+			videoID     string
+			currentType string
+		}
+		batchRows, err := db.Query(r.Context(), `
+			SELECT id, video_id, type::text
+			FROM youtube_video
+			WHERE id >= $1
+			  AND enriched_at IS NULL
+			ORDER BY id
+			LIMIT 50
+		`, targetDBID)
 		if err != nil {
-			log.Error("enrich: youtube API", "error", err, "video_id", videoID)
+			log.Error("enrich: batch query", "error", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		var batch []videoRow
+		for batchRows.Next() {
+			var v videoRow
+			if err := batchRows.Scan(&v.dbID, &v.videoID, &v.currentType); err != nil {
+				batchRows.Close()
+				log.Error("enrich: batch scan", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+			batch = append(batch, v)
+		}
+		batchRows.Close()
+		if err := batchRows.Err(); err != nil {
+			log.Error("enrich: batch rows", "error", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
 
-		d, ok := details[videoID]
-		if !ok {
+		// Target may be absent when already enriched; always include it.
+		targetInBatch := false
+		for _, v := range batch {
+			if v.dbID == targetDBID {
+				targetInBatch = true
+				break
+			}
+		}
+		if !targetInBatch {
+			batch = append([]videoRow{{targetDBID, targetVideoID, targetCurrentType}}, batch...)
+			if len(batch) > 50 {
+				batch = batch[:50]
+			}
+		}
+
+		ids := make([]string, len(batch))
+		for i, v := range batch {
+			ids[i] = v.videoID
+		}
+
+		details, err := yt.Enrich(r.Context(), ids)
+		if err != nil {
+			log.Error("enrich: youtube API", "error", err, "video_id", targetVideoID)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		for _, v := range batch {
+			d, ok := details[v.videoID]
+			if !ok {
+				continue
+			}
+			if err := applyEnrichment(r.Context(), db, v.dbID, v.currentType, d); err != nil {
+				log.Error("enrich: db update", "error", err, "video_id", v.videoID)
+			}
+		}
+
+		if _, ok := details[targetVideoID]; !ok {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "video not found on YouTube"})
 			return
 		}
 
-		if err := applyEnrichment(r.Context(), db, dbID, currentType, d); err != nil {
-			log.Error("enrich: db update", "error", err, "video_id", videoID)
-			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			return
-		}
-
-		writeJSON(w, http.StatusOK, map[string]string{"status": "enriched", "video_id": videoID})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "enriched", "video_id": targetVideoID})
 	}
 }
 
