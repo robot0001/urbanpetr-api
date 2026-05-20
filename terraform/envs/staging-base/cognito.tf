@@ -77,8 +77,14 @@ resource "aws_cognito_user_pool_client" "admin_spa" {
 
   supported_identity_providers = ["Google"]
 
-  callback_urls = ["http://localhost:3001/auth-callback"]
-  logout_urls   = ["http://localhost:3001"]
+  callback_urls = [
+    "http://localhost:3001/auth-callback",
+    "https://admin.urbanpetr.home/auth-callback",
+  ]
+  logout_urls = [
+    "http://localhost:3001",
+    "https://admin.urbanpetr.home",
+  ]
 
   access_token_validity  = 60
   refresh_token_validity = 43200
