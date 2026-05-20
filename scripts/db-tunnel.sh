@@ -11,7 +11,7 @@
 #   psql "host=localhost port=<local_port> dbname=<dbname> user=<user> password=<pass>"
 #
 # Requirements:
-#   aws CLI >= 2.13  (adds ec2-instance-connect open-tunnel)
+#   aws CLI >= 2.13  (adds ec2-instance-connect start-secure-tunnel)
 #   IAM permission: ec2-instance-connect:OpenTunnel on the EIC endpoint
 
 set -euo pipefail
@@ -19,6 +19,7 @@ set -euo pipefail
 LOCAL_PORT="${1:-5433}"
 SECRET_ID="urbanpetr/api/db/migrator"
 EIC_TAG="urbanpetr-api-prod-eic-endpoint"
+export AWS_PROFILE="${AWS_PROFILE:-terraform}"
 
 echo "Looking up EIC endpoint ($EIC_TAG)..."
 EIC_ID=$(aws ec2 describe-instance-connect-endpoints \
@@ -43,9 +44,12 @@ DB_NAME=$(echo "$SECRET"  | python3 -c "import sys,json; d=json.load(sys.stdin);
 DB_USER=$(echo "$SECRET"  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['username'])")
 DB_PASS=$(echo "$SECRET"  | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['password'])")
 
+# EIC open-tunnel requires a private IP, not a hostname
+RDS_IP=$(python3 -c "import socket; print(socket.gethostbyname('$RDS_HOST'))")
+
 echo ""
 echo "  EIC endpoint: $EIC_ID"
-echo "  RDS:          $RDS_HOST:$RDS_PORT"
+echo "  RDS:          $RDS_HOST ($RDS_IP):$RDS_PORT"
 echo "  Local port:   $LOCAL_PORT"
 echo ""
 echo "Connect with:"
@@ -54,8 +58,9 @@ echo ""
 echo "Tunnel open — press Ctrl-C to close."
 echo ""
 
-aws ec2-instance-connect open-tunnel \
+aws ec2-instance-connect start-secure-tunnel \
   --instance-connect-endpoint-id "$EIC_ID" \
-  --remote-host "$RDS_HOST" \
-  --remote-port "$RDS_PORT" \
+  --instance-id "i-placeholder" \
+  --target-ip-address "$RDS_IP" \
+  --port "$RDS_PORT" \
   --local-port "$LOCAL_PORT"
