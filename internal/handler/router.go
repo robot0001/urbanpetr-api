@@ -29,6 +29,7 @@ func NewRouter(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client, jwtMiddle
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Compress(5))
+	r.Use(originSecretMiddleware(os.Getenv("ORIGIN_SECRET")))
 	r.Use(requestLogger(log))
 	r.Use(recoverer(log))
 	r.Use(cors.Handler(cors.Options{
@@ -67,6 +68,19 @@ func requestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 				"latency_ms", time.Since(start).Milliseconds(),
 				"request_id", middleware.GetReqID(r.Context()),
 			)
+		})
+	}
+}
+
+func originSecretMiddleware(secret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if secret != "" && r.Header.Get("X-Origin-Secret") != secret {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }
