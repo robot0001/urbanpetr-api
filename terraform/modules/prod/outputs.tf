@@ -23,3 +23,8 @@ output "cognito_hosted_ui_domain" {
   description = "Hosted UI domain — set as NUXT_PUBLIC_COGNITO_DOMAIN in GitHub Actions and local .env."
 }
 
+output "waf_arn" {
+  value       = aws_wafv2_web_acl.shared.arn
+  description = "Shared CLOUDFRONT-scope WAF WebACL ARN — consumed by urbanpetr.com to protect the frontend CloudFront distribution."
+}
+

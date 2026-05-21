@@ -21,6 +21,7 @@ module "api_lambda" {
     YOUTUBE_API_KEY_SECRET_ARN = aws_secretsmanager_secret.youtube_api_key.arn
     COGNITO_USER_POOL_ID       = aws_cognito_user_pool.main.id
     COGNITO_AWS_REGION         = "eu-central-1"
+    ORIGIN_SECRET              = random_password.origin_secret.result
   }
 
   custom_tags = local.common_tags
