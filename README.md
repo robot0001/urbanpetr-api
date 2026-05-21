@@ -23,7 +23,7 @@ internal/handler/        — chi router, middleware, HTTP handlers
 internal/migrate/        — DB provisioning (provision.go) + golang-migrate runner
 internal/seed/           — Seed SQL runner (staging PR envs)
 migrations/              — SQL migration files (bundled into Lambda zip)
-terraform/modules/prod/  — Lambda, API Gateway, RDS access, IAM, secrets, DNS
+terraform/modules/prod/  — Lambda, API Gateway, CloudFront, WAF, RDS access, IAM, secrets, DNS
 terraform/envs/prod/     — Prod environment wiring
 ```
 
@@ -79,8 +79,11 @@ Remove the `stage` label or close the PR to tear everything down. The shared Lam
 
 Prod infrastructure lives in AWS Account A (`eu-central-1`), staging in Account B. Key resources:
 
-- **Lambda** — `provided.al2023` runtime, ARM64, VPC-attached
-- **API Gateway** — HTTP API v2 (`aws_apigatewayv2_api`)
+- **CloudFront** — `api.urbanpetr.com` terminates at a CloudFront distribution (`PriceClass_100`); origin is the API Gateway raw invoke URL
+- **WAF** — shared `CLOUDFRONT`-scope WebACL (us-east-1) attached to the API CloudFront distribution: IP reputation list, common rule set, 1000 req/5 min per-IP rate limit
+- **Origin secret** — CloudFront injects `X-Origin-Secret` on every origin request; the Lambda middleware rejects any request that arrives without the correct value, preventing API Gateway bypass
+- **API Gateway** — HTTP API v2, no custom domain (CloudFront handles TLS termination for `api.urbanpetr.com`)
+- **Lambda** — `provided.al2023` runtime, ARM64, VPC-attached; throttle burst 200 / rate 100 rps at API Gateway stage level
 - **RDS** — Aurora PostgreSQL (shared, managed by `urbanpetr-platform`)
 - **Secrets Manager** — separate secrets for master / migrator / app / readonly DB credentials
 - **S3** — `urbanpetr-artifacts` (prod) / `urbanpetr-artifacts-staging` (staging) for Lambda zip artifacts
