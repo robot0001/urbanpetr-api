@@ -1,5 +1,5 @@
 module "api_gateway" {
-  source = "github.com/robot0001/urbanpetr-foundation//modules/api_gateway_http?ref=v2.1.0"
+  source = "github.com/robot0001/urbanpetr-foundation//modules/api_gateway_http?ref=v2.1.1"
 
   name                       = local.name_prefix
   lambda_invoke_arn          = module.api_lambda.invoke_arn
