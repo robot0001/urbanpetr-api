@@ -3,14 +3,14 @@ module "api_lambda" {
 
   function_name                  = "urbanpetr-api-prod"
   reserved_concurrent_executions = 200
-  package_type       = "Zip"
-  runtime            = "provided.al2023"
-  handler            = "bootstrap"
-  s3_bucket          = aws_s3_bucket.artifacts.id
-  s3_key             = "urbanpetr-api/placeholder.zip"
-  vpc_id             = local.vpc_id
-  subnet_ids         = local.private_subnet_ids
-  execution_role_arn = aws_iam_role.api_lambda.arn
+  package_type                   = "Zip"
+  runtime                        = "provided.al2023"
+  handler                        = "bootstrap"
+  s3_bucket                      = aws_s3_bucket.artifacts.id
+  s3_key                         = "urbanpetr-api/placeholder.zip"
+  vpc_id                         = local.vpc_id
+  subnet_ids                     = local.private_subnet_ids
+  execution_role_arn             = aws_iam_role.api_lambda.arn
 
   environment_variables = {
     APP_NAME                   = "urbanpetr-api"
