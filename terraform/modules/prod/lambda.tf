@@ -1,7 +1,8 @@
 module "api_lambda" {
-  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.0.0"
+  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.1.0"
 
-  function_name      = "urbanpetr-api-prod"
+  function_name                  = "urbanpetr-api-prod"
+  reserved_concurrent_executions = 200
   package_type       = "Zip"
   runtime            = "provided.al2023"
   handler            = "bootstrap"
@@ -27,7 +28,7 @@ module "api_lambda" {
 }
 
 module "migrations_lambda" {
-  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.0.0"
+  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.1.0"
 
   function_name      = "urbanpetr-api-prod-migrations"
   package_type       = "Zip"

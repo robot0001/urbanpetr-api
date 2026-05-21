@@ -1,5 +1,5 @@
 module "api_lambda" {
-  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.0.2"
+  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.1.0"
 
   function_name      = local.name_prefix
   package_type       = "Zip"
@@ -28,7 +28,7 @@ module "api_lambda" {
 }
 
 module "migrations_lambda" {
-  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.0.2"
+  source = "github.com/robot0001/urbanpetr-foundation//modules/lambda_function?ref=v2.1.0"
 
   function_name      = "${local.name_prefix}-migrations"
   package_type       = "Zip"
