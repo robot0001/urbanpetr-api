@@ -231,19 +231,12 @@ jobs:
         working-directory: terraform/envs/prod
         run: terraform init -input=false
 
-      - name: Terraform apply (artifacts bucket)
-        working-directory: terraform/envs/prod
+      - name: Ensure placeholder artifact exists
         run: |
-          terraform apply -auto-approve -input=false \
-            -target=module.api.aws_s3_bucket.artifacts \
-            -target=module.api.aws_s3_bucket_versioning.artifacts \
-            -target=module.api.aws_s3_bucket_lifecycle_configuration.artifacts \
-            -target=module.api.aws_s3_bucket_public_access_block.artifacts
-
-      - name: Upload placeholder zip
-        run: |
-          python3 -c 'import zipfile; z=zipfile.ZipFile("/tmp/placeholder.zip","w"); z.writestr("bootstrap","placeholder"); z.close()'
-          aws s3 cp /tmp/placeholder.zip "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip"
+          if ! aws s3 ls "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip" 2>/dev/null; then
+            python3 -c 'import zipfile; z=zipfile.ZipFile("/tmp/placeholder.zip","w"); z.writestr("bootstrap","placeholder"); z.close()'
+            aws s3 cp /tmp/placeholder.zip "s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/placeholder.zip"
+          fi
 
       - name: Terraform apply
         working-directory: terraform/envs/prod
