@@ -4,8 +4,8 @@ resource "aws_route53_record" "api" {
   type    = "A"
 
   alias {
-    name                   = module.api_gateway.custom_domain_target
-    zone_id                = module.api_gateway.custom_domain_hosted_zone_id
+    name                   = aws_cloudfront_distribution.api.domain_name
+    zone_id                = aws_cloudfront_distribution.api.hosted_zone_id
     evaluate_target_health = false
   }
 }
