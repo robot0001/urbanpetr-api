@@ -10,7 +10,7 @@ module "api_lambda" {
   vpc_id             = local.vpc_id
   subnet_ids         = local.private_subnet_ids
   execution_role_arn = aws_iam_role.api_lambda.arn
-  memory_size        = 512
+  memory_size        = 1024
 
   environment_variables = {
     APP_NAME                   = "urbanpetr-api"
