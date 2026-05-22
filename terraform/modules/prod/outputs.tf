@@ -43,3 +43,8 @@ output "api_cloudfront_distribution_id" {
   description = "API CloudFront distribution ID — passed to the kill-switch Lambda."
 }
 
+output "kill_switch_sns_topic_arn" {
+  value       = aws_sns_topic.kill_switch.arn
+  description = "SNS topic ARN that triggers the kill-switch Lambda."
+}
+
