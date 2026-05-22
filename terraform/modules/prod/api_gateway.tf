@@ -5,7 +5,6 @@ module "api_gateway" {
   lambda_invoke_arn          = module.api_lambda.invoke_arn
   lambda_function_name       = module.api_lambda.function_name
   access_log_destination_arn = aws_cloudwatch_log_group.api_gateway.arn
-  cors_allow_origins         = ["https://urbanpetr.com", "https://admin.urbanpetr.com"]
 
   custom_tags = local.common_tags
 }
