@@ -15,3 +15,21 @@ data "terraform_remote_state" "foundation" {
     region = "eu-central-1"
   }
 }
+
+data "terraform_remote_state" "website" {
+  backend = "s3"
+  config = {
+    bucket = "urbanpetr-tf-state"
+    key    = "urbanpetr_website/prod/terraform.tfstate"
+    region = "eu-central-1"
+  }
+}
+
+data "terraform_remote_state" "admin" {
+  backend = "s3"
+  config = {
+    bucket = "urbanpetr-tf-state"
+    key    = "urbanpetr_admin/prod/terraform.tfstate"
+    region = "eu-central-1"
+  }
+}
