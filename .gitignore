@@ -1,5 +1,6 @@
 bootstrap
 lambda.zip
+lambda/**/*.zip
 .env
 /ingest
 **/.terraform/
