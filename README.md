@@ -23,6 +23,7 @@ internal/handler/        — chi router, middleware, HTTP handlers
 internal/migrate/        — DB provisioning (provision.go) + golang-migrate runner
 internal/seed/           — Seed SQL runner (staging PR envs)
 migrations/              — SQL migration files (bundled into Lambda zip)
+lambda/kill_switch/      — Automatic DDoS kill-switch Lambda (Python 3.12)
 terraform/modules/prod/  — Lambda, API Gateway, CloudFront, WAF, RDS access, IAM, secrets, DNS
 terraform/envs/prod/     — Prod environment wiring
 ```
@@ -80,7 +81,7 @@ Remove the `stage` label or close the PR to tear everything down. The shared Lam
 Prod infrastructure lives in AWS Account A (`eu-central-1`), staging in Account B. Key resources:
 
 - **CloudFront** — `api.urbanpetr.com` terminates at a CloudFront distribution (`PriceClass_100`); origin is the API Gateway raw invoke URL
-- **WAF** — shared `CLOUDFRONT`-scope WebACL (us-east-1) attached to the API CloudFront distribution: IP reputation list, common rule set, 1000 req/5 min per-IP rate limit
+- **WAF** — shared `CLOUDFRONT`-scope WebACL (us-east-1) attached to the API CloudFront distribution: kill-switch block rule (priority 0, empty by default), IP reputation list, common rule set, 1000 req/5 min per-IP rate limit
 - **Origin secret** — CloudFront injects `X-Origin-Secret` on every origin request; the Lambda middleware rejects any request that arrives without the correct value, preventing API Gateway bypass
 - **API Gateway** — HTTP API v2, no custom domain (CloudFront handles TLS termination for `api.urbanpetr.com`); throttle burst 200 / rate 100 rps at stage level
 - **Lambda** — `provided.al2023` runtime, ARM64, VPC-attached
@@ -90,6 +91,26 @@ Prod infrastructure lives in AWS Account A (`eu-central-1`), staging in Account 
 - **S3** — `urbanpetr-artifacts` (prod) / `urbanpetr-artifacts-staging` (staging) for Lambda zip artifacts
 
 Platform outputs (VPC, RDS endpoint, security groups) are consumed via `terraform_remote_state` from the `urbanpetr-platform` repo.
+
+## Kill switch
+
+An automatic DDoS kill switch fires when the `urbanpetr-api-invocations-spike` CloudWatch alarm detects more than **500 Lambda invocations in a single 60-second window** (normal peak is 50–200 req/min). The alarm publishes to an SNS topic which synchronously invokes `urbanpetr-kill-switch` (Python 3.12, `lambda/kill_switch/main.py`). Total detection-to-kill latency: **under 2 minutes**.
+
+### Kill sequence
+
+| Step | Action | Latency | Effect |
+|------|--------|---------|--------|
+| 1 | Set `urbanpetr-api-prod` reserved concurrency to 0 | ~1 second | API Gateway returns 429, Lambda charges drop to $0 |
+| 2 | Populate WAF `urbanpetr-kill-switch` IP sets with `0.0.0.0/0` + `::/0` | seconds | All requests blocked at CloudFront edge; API Gateway charges drop to $0 |
+| 3 | Disable API, website, and admin CloudFront distributions | ~15 min propagation | WAF charges drop to $0; ongoing attack cost ~$0/hr |
+
+### Restoration (manual)
+
+Re-enabling is intentionally manual. Do steps in this order:
+
+1. **WAF** — clear `0.0.0.0/0` / `::/0` from both kill-switch IP sets in the WAF console (us-east-1). Takes effect in seconds.
+2. **CloudFront** — re-enable all three distributions in the CloudFront console. Allow 5–15 min propagation each.
+3. **Lambda** — remove the reserved concurrency from `urbanpetr-api-prod` (set to "unreserved"). Do this last so traffic can flow before Lambda accepts requests again.
 
 ## Database conventions
 
