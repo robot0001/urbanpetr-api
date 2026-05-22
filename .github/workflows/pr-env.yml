@@ -57,6 +57,14 @@ jobs:
         with:
           terraform_version: 1.9.8
 
+      - name: Terraform init (staging-base)
+        working-directory: terraform/envs/staging-base
+        run: terraform init -input=false
+
+      - name: Terraform apply (staging-base)
+        working-directory: terraform/envs/staging-base
+        run: terraform apply -auto-approve -input=false
+
       - name: Terraform init
         working-directory: terraform/envs/staging
         run: |
@@ -264,3 +272,20 @@ jobs:
           aws s3 rm \
             s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/pr-${{ github.event.number }}/ \
             --recursive
+
+      - name: Check for remaining active PR envs
+        id: check_remaining
+        run: |
+          COUNT=$(aws s3 ls s3://urbanpetr-tf-state-staging/urbanpetr_api/ \
+            | grep -c 'terraform.tfstate$' || true)
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform init (staging-base)
+        if: steps.check_remaining.outputs.count == '0'
+        working-directory: terraform/envs/staging-base
+        run: terraform init -input=false
+
+      - name: Terraform destroy (staging-base)
+        if: steps.check_remaining.outputs.count == '0'
+        working-directory: terraform/envs/staging-base
+        run: terraform destroy -auto-approve -input=false
