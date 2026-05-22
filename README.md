@@ -23,7 +23,7 @@ internal/handler/        — chi router, middleware, HTTP handlers
 internal/migrate/        — DB provisioning (provision.go) + golang-migrate runner
 internal/seed/           — Seed SQL runner (staging PR envs)
 migrations/              — SQL migration files (bundled into Lambda zip)
-terraform/modules/prod/  — Lambda, API Gateway, RDS access, IAM, secrets, DNS
+terraform/modules/prod/  — Lambda, API Gateway, CloudFront, WAF, RDS access, IAM, secrets, DNS
 terraform/envs/prod/     — Prod environment wiring
 ```
 
@@ -79,8 +79,12 @@ Remove the `stage` label or close the PR to tear everything down. The shared Lam
 
 Prod infrastructure lives in AWS Account A (`eu-central-1`), staging in Account B. Key resources:
 
+- **CloudFront** — `api.urbanpetr.com` terminates at a CloudFront distribution (`PriceClass_100`); origin is the API Gateway raw invoke URL
+- **WAF** — shared `CLOUDFRONT`-scope WebACL (us-east-1) attached to the API CloudFront distribution: IP reputation list, common rule set, 1000 req/5 min per-IP rate limit
+- **Origin secret** — CloudFront injects `X-Origin-Secret` on every origin request; the Lambda middleware rejects any request that arrives without the correct value, preventing API Gateway bypass
+- **API Gateway** — HTTP API v2, no custom domain (CloudFront handles TLS termination for `api.urbanpetr.com`); throttle burst 200 / rate 100 rps at stage level
 - **Lambda** — `provided.al2023` runtime, ARM64, VPC-attached
-- **API Gateway** — HTTP API v2 (`aws_apigatewayv2_api`)
+- **CORS** — handled by chi middleware; allows `https://*.urbanpetr.com` (covers prod, admin, and all stage environments)
 - **RDS** — Aurora PostgreSQL (shared, managed by `urbanpetr-platform`)
 - **Secrets Manager** — separate secrets for master / migrator / app / readonly DB credentials
 - **S3** — `urbanpetr-artifacts` (prod) / `urbanpetr-artifacts-staging` (staging) for Lambda zip artifacts
@@ -118,7 +122,7 @@ Upload a Google Takeout zip via `POST /v1/history/youtube/ingest`. The handler:
 1. Extracts the `.json` file from the zip
 2. Parses entries and classifies each as `video` or `short` (see below)
 3. Upserts into `youtube_video` and inserts new rows into `youtube_history`
-4. Auto-enriches the latest 100 un-enriched videos (see below)
+4. Auto-enriches the latest 500 un-enriched videos (see below)
 
 The response includes `total` (parsed entries), `created` (new history rows), and `enriched` (videos fetched from the YouTube API in this run).
 
@@ -148,6 +152,16 @@ The auto-enrich limit (`autoEnrichLimit = 500`) and batch size (50, dictated by 
 
 ## Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/health` | Returns `{"status":"ok"}` |
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/health` | — | Returns `{"status":"ok"}` |
+| GET | `/v1/history/youtube` | — | List active (public) YouTube watch history |
+| GET | `/v1/history/youtube/all` | admin | List all YouTube watch history entries |
+| GET | `/v1/history/youtube/{uuid}` | admin | Get a single YouTube history entry |
+| POST | `/v1/history/youtube/ingest` | admin | Ingest a Google Takeout zip |
+| POST | `/v1/history/youtube/{uuid}/activate` | admin | Mark an entry as active (public) |
+| POST | `/v1/history/youtube/{uuid}/deactivate` | admin | Mark an entry as inactive (hidden) |
+| PATCH | `/v1/history/youtube/{uuid}` | admin | Update entry details |
+| POST | `/v1/history/youtube/{uuid}/enrich` | admin | Fetch YouTube metadata for a single video |
+
+Admin endpoints require a Cognito-issued JWT with the `urbanpetr_admin` scope (`Authorization: Bearer <token>`).
