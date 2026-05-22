@@ -38,3 +38,33 @@ resource "aws_cloudwatch_log_resource_policy" "api_gateway_logging" {
     }]
   })
 }
+
+# --- Kill-switch alarm ---
+
+resource "aws_sns_topic" "kill_switch" {
+  name = "urbanpetr-kill-switch"
+  tags = local.common_tags
+}
+
+# Fires when Lambda invocations exceed 500/min for a single 60-second period.
+# Normal peak is 50–200 req/min; 500 indicates a clear traffic spike.
+# The kill-switch Lambda subscribes to this topic (wired in a later PR).
+resource "aws_cloudwatch_metric_alarm" "api_invocations_spike" {
+  alarm_name          = "urbanpetr-api-invocations-spike"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Invocations"
+  namespace           = "AWS/Lambda"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 500
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = "urbanpetr-api-prod"
+  }
+
+  alarm_actions = [aws_sns_topic.kill_switch.arn]
+
+  tags = local.common_tags
+}

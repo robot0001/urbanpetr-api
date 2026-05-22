@@ -28,3 +28,8 @@ output "waf_arn" {
   description = "Shared CLOUDFRONT-scope WAF WebACL ARN — consumed by urbanpetr.com to protect the frontend CloudFront distribution."
 }
 
+output "kill_switch_sns_topic_arn" {
+  value       = aws_sns_topic.kill_switch.arn
+  description = "SNS topic ARN that triggers the kill-switch Lambda."
+}
+
