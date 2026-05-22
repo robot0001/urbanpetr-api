@@ -118,6 +118,35 @@ resource "aws_cloudwatch_log_resource_policy" "api_gateway_logging" {
   })
 }
 
+# NAT Gateway for private subnet internet access.
+# Exists only while staging-base is deployed (i.e. at least one PR env is active).
+
+resource "aws_eip" "nat" {
+  domain = "vpc"
+  tags = {
+    Project     = "urbanpetr-api"
+    Environment = "staging"
+    Name        = "urbanpetr-staging-nat-eip"
+  }
+}
+
+resource "aws_nat_gateway" "this" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = data.terraform_remote_state.platform.outputs.public_subnet_ids[0]
+  tags = {
+    Project     = "urbanpetr-api"
+    Environment = "staging"
+    Name        = "urbanpetr-staging-nat"
+  }
+  depends_on = [aws_eip.nat]
+}
+
+resource "aws_route" "private_internet" {
+  route_table_id         = data.terraform_remote_state.platform.outputs.private_route_table_id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.this.id
+}
+
 # Wildcard cert for api-stage{N}.urbanpetr.com custom domains on PR envs.
 # After applying, add the CNAME from wildcard_cert_validation_cname output to
 # Route53 in Account A (one-time). The cert auto-validates and stays ISSUED.
