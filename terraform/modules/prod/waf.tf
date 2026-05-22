@@ -3,6 +3,28 @@ resource "random_password" "origin_secret" {
   special = false
 }
 
+# Empty by default — populated with 0.0.0.0/0 and ::/0 by the kill-switch Lambda
+# to block all traffic at the CloudFront edge within seconds.
+resource "aws_wafv2_ip_set" "kill_switch" {
+  provider           = aws.us_east_1
+  name               = "urbanpetr-kill-switch"
+  scope              = "CLOUDFRONT"
+  ip_address_version = "IPV4"
+  addresses          = []
+
+  tags = local.common_tags
+}
+
+resource "aws_wafv2_ip_set" "kill_switch_v6" {
+  provider           = aws.us_east_1
+  name               = "urbanpetr-kill-switch-v6"
+  scope              = "CLOUDFRONT"
+  ip_address_version = "IPV6"
+  addresses          = []
+
+  tags = local.common_tags
+}
+
 resource "aws_wafv2_web_acl" "shared" {
   provider = aws.us_east_1
   name     = "urbanpetr-shared"
@@ -10,6 +32,35 @@ resource "aws_wafv2_web_acl" "shared" {
 
   default_action {
     allow {}
+  }
+
+  # Priority 0 — evaluated first; no-op while IP sets are empty.
+  # Populated by kill-switch Lambda to block all traffic instantly.
+  rule {
+    name     = "KillSwitch"
+    priority = 0
+    action {
+      block {}
+    }
+    statement {
+      or_statement {
+        statement {
+          ip_set_reference_statement {
+            arn = aws_wafv2_ip_set.kill_switch.arn
+          }
+        }
+        statement {
+          ip_set_reference_statement {
+            arn = aws_wafv2_ip_set.kill_switch_v6.arn
+          }
+        }
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "KillSwitch"
+      sampled_requests_enabled   = true
+    }
   }
 
   rule {

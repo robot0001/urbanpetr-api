@@ -28,6 +28,21 @@ output "waf_arn" {
   description = "Shared CLOUDFRONT-scope WAF WebACL ARN — consumed by urbanpetr.com to protect the frontend CloudFront distribution."
 }
 
+output "kill_switch_ip_set_id" {
+  value       = aws_wafv2_ip_set.kill_switch.id
+  description = "IPv4 kill-switch IP set ID — passed to the kill-switch Lambda."
+}
+
+output "kill_switch_ip_set_v6_id" {
+  value       = aws_wafv2_ip_set.kill_switch_v6.id
+  description = "IPv6 kill-switch IP set ID — passed to the kill-switch Lambda."
+}
+
+output "api_cloudfront_distribution_id" {
+  value       = aws_cloudfront_distribution.api.id
+  description = "API CloudFront distribution ID — passed to the kill-switch Lambda."
+}
+
 output "kill_switch_sns_topic_arn" {
   value       = aws_sns_topic.kill_switch.arn
   description = "SNS topic ARN that triggers the kill-switch Lambda."
