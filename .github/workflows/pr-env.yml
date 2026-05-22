@@ -199,7 +199,6 @@ jobs:
           fi
 
       - uses: hashicorp/setup-terraform@v4
-        if: steps.check.outputs.exists == 'true'
         with:
           terraform_version: 1.9.8
 
