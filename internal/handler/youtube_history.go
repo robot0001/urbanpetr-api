@@ -603,8 +603,9 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			return
 		}
 
-		// Fetch up to 50 unenriched videos of the same type starting from the target.
-		// If fewer than 50 are found at id >= target, fill remaining slots from lower IDs.
+		// Fetch up to 50 unenriched videos of the same type at id <= target (descending),
+		// so the batch covers the target and the videos just before it in insertion order.
+		// If fewer than 50 are found, fill remaining slots from higher IDs.
 		type videoRow struct {
 			dbID        int64
 			videoID     string
@@ -613,10 +614,10 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 		batchRows, err := db.Query(r.Context(), `
 			SELECT id, video_id, type::text
 			FROM youtube_video
-			WHERE id >= $1
+			WHERE id <= $1
 			  AND enriched_at IS NULL
 			  AND type = $2::youtube_video_type
-			ORDER BY id
+			ORDER BY id DESC
 			LIMIT 50
 		`, targetDBID, targetCurrentType)
 		if err != nil {
@@ -642,12 +643,12 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			return
 		}
 
-		// Fill remaining slots with unenriched videos below the target.
+		// Fill remaining slots with unenriched videos above the target.
 		if len(batch) < 50 {
 			fillRows, err := db.Query(r.Context(), `
 				SELECT id, video_id, type::text
 				FROM youtube_video
-				WHERE id < $1
+				WHERE id > $1
 				  AND enriched_at IS NULL
 				  AND type = $2::youtube_video_type
 				ORDER BY id
