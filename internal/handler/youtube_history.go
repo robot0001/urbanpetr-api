@@ -603,7 +603,9 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			return
 		}
 
-		// Fetch up to 50 unenriched videos of the same type starting from the target.
+		// Fetch up to 50 videos of the same type that still lack a thumbnail, starting
+		// from the target. thumbnail_url IS NULL matches exactly what the "Fetch details"
+		// button tests, so we batch the same set the user can see needs enrichment.
 		// If fewer than 50 are found at id >= target, fill remaining slots from lower IDs.
 		type videoRow struct {
 			dbID        int64
@@ -614,7 +616,7 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			SELECT id, video_id, type::text
 			FROM youtube_video
 			WHERE id >= $1
-			  AND enriched_at IS NULL
+			  AND thumbnail_url IS NULL
 			  AND type = $2::youtube_video_type
 			ORDER BY id
 			LIMIT 50
@@ -642,14 +644,13 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			return
 		}
 
-		// Fill remaining slots from unenriched videos below the target when the first
-		// query returned fewer than 50 (e.g. most higher-id videos are already enriched).
+		// Fill remaining slots from thumbnailless videos below the target.
 		if len(batch) < 50 {
 			fillRows, err := db.Query(r.Context(), `
 				SELECT id, video_id, type::text
 				FROM youtube_video
 				WHERE id < $1
-				  AND enriched_at IS NULL
+				  AND thumbnail_url IS NULL
 				  AND type = $2::youtube_video_type
 				ORDER BY id
 				LIMIT $3
