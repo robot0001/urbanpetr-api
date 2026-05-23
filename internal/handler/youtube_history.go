@@ -642,8 +642,7 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			return
 		}
 
-		// Fill remaining slots from unenriched videos below the target when the first
-		// query returned fewer than 50 (e.g. most higher-id videos are already enriched).
+		// Fill remaining slots with unenriched videos below the target.
 		if len(batch) < 50 {
 			fillRows, err := db.Query(r.Context(), `
 				SELECT id, video_id, type::text
@@ -707,6 +706,17 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 		for _, v := range batch {
 			d, ok := details[v.videoID]
 			if !ok {
+				// Video absent from YouTube response (deleted/private). Mark it so it no
+				// longer occupies batch slots — the button still shows if thumbnail is
+				// still missing, but only on an explicit re-click for that specific item.
+				if v.dbID != targetDBID {
+					if _, err := db.Exec(r.Context(),
+						`UPDATE youtube_video SET enriched_at = NOW() WHERE id = $1`,
+						v.dbID,
+					); err != nil {
+						log.Error("enrich: mark absent", "error", err, "video_id", v.videoID)
+					}
+				}
 				continue
 			}
 			if err := applyEnrichment(r.Context(), db, v.dbID, v.currentType, d); err != nil {
