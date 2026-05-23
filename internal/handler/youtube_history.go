@@ -603,7 +603,8 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			return
 		}
 
-		// Fetch up to 50 unenriched videos starting from the target to amortise API quota.
+		// Fetch up to 50 unenriched videos of the same type starting from the target.
+		// If fewer than 50 are found at id >= target, fill remaining slots from lower IDs.
 		type videoRow struct {
 			dbID        int64
 			videoID     string
@@ -614,9 +615,10 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			FROM youtube_video
 			WHERE id >= $1
 			  AND enriched_at IS NULL
+			  AND type = $2::youtube_video_type
 			ORDER BY id
 			LIMIT 50
-		`, targetDBID)
+		`, targetDBID, targetCurrentType)
 		if err != nil {
 			log.Error("enrich: batch query", "error", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -638,6 +640,41 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			log.Error("enrich: batch rows", "error", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
+		}
+
+		// Fill remaining slots from unenriched videos below the target when the first
+		// query returned fewer than 50 (e.g. most higher-id videos are already enriched).
+		if len(batch) < 50 {
+			fillRows, err := db.Query(r.Context(), `
+				SELECT id, video_id, type::text
+				FROM youtube_video
+				WHERE id < $1
+				  AND enriched_at IS NULL
+				  AND type = $2::youtube_video_type
+				ORDER BY id
+				LIMIT $3
+			`, targetDBID, targetCurrentType, 50-len(batch))
+			if err != nil {
+				log.Error("enrich: batch fill query", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+			for fillRows.Next() {
+				var v videoRow
+				if err := fillRows.Scan(&v.dbID, &v.videoID, &v.currentType); err != nil {
+					fillRows.Close()
+					log.Error("enrich: batch fill scan", "error", err)
+					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					return
+				}
+				batch = append(batch, v)
+			}
+			fillRows.Close()
+			if err := fillRows.Err(); err != nil {
+				log.Error("enrich: batch fill rows", "error", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
 		}
 
 		// Target may be absent when already enriched; always include it.
