@@ -603,9 +603,7 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			return
 		}
 
-		// Fetch up to 50 videos of the same type that still lack a thumbnail, starting
-		// from the target. thumbnail_url IS NULL matches exactly what the "Fetch details"
-		// button tests, so we batch the same set the user can see needs enrichment.
+		// Fetch up to 50 unenriched videos of the same type starting from the target.
 		// If fewer than 50 are found at id >= target, fill remaining slots from lower IDs.
 		type videoRow struct {
 			dbID        int64
@@ -616,7 +614,7 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			SELECT id, video_id, type::text
 			FROM youtube_video
 			WHERE id >= $1
-			  AND thumbnail_url IS NULL
+			  AND enriched_at IS NULL
 			  AND type = $2::youtube_video_type
 			ORDER BY id
 			LIMIT 50
@@ -644,13 +642,13 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 			return
 		}
 
-		// Fill remaining slots from thumbnailless videos below the target.
+		// Fill remaining slots with unenriched videos below the target.
 		if len(batch) < 50 {
 			fillRows, err := db.Query(r.Context(), `
 				SELECT id, video_id, type::text
 				FROM youtube_video
 				WHERE id < $1
-				  AND thumbnail_url IS NULL
+				  AND enriched_at IS NULL
 				  AND type = $2::youtube_video_type
 				ORDER BY id
 				LIMIT $3
@@ -708,6 +706,17 @@ func EnrichYoutubeVideo(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client) 
 		for _, v := range batch {
 			d, ok := details[v.videoID]
 			if !ok {
+				// Video absent from YouTube response (deleted/private). Mark it so it no
+				// longer occupies batch slots — the button still shows if thumbnail is
+				// still missing, but only on an explicit re-click for that specific item.
+				if v.dbID != targetDBID {
+					if _, err := db.Exec(r.Context(),
+						`UPDATE youtube_video SET enriched_at = NOW() WHERE id = $1`,
+						v.dbID,
+					); err != nil {
+						log.Error("enrich: mark absent", "error", err, "video_id", v.videoID)
+					}
+				}
 				continue
 			}
 			if err := applyEnrichment(r.Context(), db, v.dbID, v.currentType, d); err != nil {
