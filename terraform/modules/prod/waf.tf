@@ -92,6 +92,17 @@ resource "aws_wafv2_web_acl" "shared" {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
+
+        # SizeRestrictions_Body blocks any body > 8 KB (WAF's default inspection
+        # limit). File uploads are always larger — API Gateway enforces its own
+        # 10 MB limit, so blocking here just prevents uploads without adding
+        # meaningful security.
+        rule_action_override {
+          name = "SizeRestrictions_Body"
+          action_to_use {
+            count {}
+          }
+        }
       }
     }
     visibility_config {

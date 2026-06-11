@@ -29,15 +29,15 @@ func NewRouter(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client, jwtMiddle
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Compress(5))
-	r.Use(originSecretMiddleware(os.Getenv("ORIGIN_SECRET")))
-	r.Use(requestLogger(log))
-	r.Use(recoverer(log))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: origins,
 		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
 		MaxAge:         300,
 	}))
+	r.Use(originSecretMiddleware(os.Getenv("ORIGIN_SECRET")))
+	r.Use(requestLogger(log))
+	r.Use(recoverer(log))
 	r.Get("/health", HealthHandler(log))
 	r.Get("/v1/history/youtube", ListActiveYoutubeHistory(log, db))
 
