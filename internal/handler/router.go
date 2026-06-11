@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -29,6 +30,7 @@ func NewRouter(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client, jwtMiddle
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Compress(5))
+	r.Use(joinACRH)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: origins,
 		AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
@@ -83,6 +85,23 @@ func originSecretMiddleware(secret string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// joinACRH re-joins Access-Control-Request-Headers values before the CORS
+// handler reads them. The aws-lambda-go-api-proxy adapter splits the
+// comma-separated header list into multiple Go header values because
+// Access-Control-Request-Headers is not in its singleton-header allowlist.
+// go-chi/cors uses Header.Get() which returns only the first value, so
+// without this fix preflight requests with two or more requested headers
+// (e.g. "authorization, content-type") result in only the first being
+// reflected in Access-Control-Allow-Headers.
+func joinACRH(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if vals := r.Header["Access-Control-Request-Headers"]; len(vals) > 1 {
+			r.Header.Set("Access-Control-Request-Headers", strings.Join(vals, ", "))
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func recoverer(log *slog.Logger) func(http.Handler) http.Handler {
