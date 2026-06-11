@@ -93,14 +93,26 @@ resource "aws_wafv2_web_acl" "shared" {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
 
-        # SizeRestrictions_Body blocks any body > 8 KB (WAF's default inspection
-        # limit). File uploads are always larger — API Gateway enforces its own
-        # 10 MB limit, so blocking here just prevents uploads without adding
-        # meaningful security.
-        rule_action_override {
-          name = "SizeRestrictions_Body"
-          action_to_use {
-            count {}
+        # Exclude the file-upload endpoint from all CommonRuleSet body-inspection
+        # rules. The ZIP binary content triggers false positives (SizeRestrictions,
+        # XSS, SQLi, RFI rules) because WAF inspects raw bytes, not the ZIP format.
+        # The endpoint is protected by JWT auth; API Gateway's 10 MB limit caps the
+        # upload size. All other paths retain full CommonRuleSet protection.
+        scope_down_statement {
+          not_statement {
+            statement {
+              byte_match_statement {
+                search_string         = "/v1/history/youtube/ingest"
+                positional_constraint = "EXACTLY"
+                field_to_match {
+                  uri_path {}
+                }
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
           }
         }
       }
