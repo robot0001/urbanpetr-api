@@ -272,12 +272,21 @@ jobs:
             s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/pr-${{ github.event.number }}/ \
             --recursive
 
-      - name: Check for remaining active PR envs
+      # staging-base (incl. the shared staging NAT Gateway — see
+      # urbanpetr-api/terraform/envs/staging-base) is also used by
+      # football-api's PR envs, not just this repo's. Only tear it down
+      # when NEITHER repo has an open PR with the `stage` label — an S3
+      # state-file listing isn't reliable here (old PRs can leave a
+      # non-empty state object behind without a real active env), so ask
+      # GitHub directly.
+      - name: Check for remaining active PR envs (both repos)
         id: check_remaining
+        env:
+          GH_TOKEN: ${{ secrets.GLOBAL_MODULES_PAT }}
         run: |
-          COUNT=$(aws s3 ls s3://urbanpetr-tf-state-staging/urbanpetr_api/ \
-            | grep -c 'terraform.tfstate$' || true)
-          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+          API_COUNT=$(gh pr list --repo robot0001/urbanpetr-api --label stage --state open --json number --jq 'length')
+          FOOTBALL_COUNT=$(gh pr list --repo robot0001/football-api --label stage --state open --json number --jq 'length')
+          echo "count=$((API_COUNT + FOOTBALL_COUNT))" >> "$GITHUB_OUTPUT"
 
       - name: Terraform init (staging-base)
         if: steps.check_remaining.outputs.count == '0'
