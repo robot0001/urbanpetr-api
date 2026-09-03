@@ -80,10 +80,12 @@ resource "aws_cognito_user_pool_client" "admin_spa" {
   callback_urls = [
     "http://localhost:3001/auth-callback",
     "https://admin.urbanpetr.home/auth-callback",
+    "https://football-admin.urbanpetr.home/auth-callback",
   ]
   logout_urls = [
     "http://localhost:3001",
     "https://admin.urbanpetr.home",
+    "https://football-admin.urbanpetr.home",
   ]
 
   access_token_validity  = 60
