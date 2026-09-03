@@ -75,10 +75,12 @@ resource "aws_cognito_user_pool_client" "admin_spa" {
 
   callback_urls = [
     "https://admin.urbanpetr.com/auth-callback",
+    "https://football-admin.urbanpetr.com/auth-callback",
     "http://localhost:3001/auth-callback",
   ]
   logout_urls = [
     "https://admin.urbanpetr.com",
+    "https://football-admin.urbanpetr.com",
     "http://localhost:3001",
   ]
 
