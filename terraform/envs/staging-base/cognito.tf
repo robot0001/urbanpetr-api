@@ -40,6 +40,36 @@ resource "aws_cognito_user_group" "admin" {
   description  = "Full access to all API endpoints"
 }
 
+resource "aws_cognito_user_group" "superadmin" {
+  name         = "superadmin"
+  user_pool_id = aws_cognito_user_pool.staging.id
+  description  = "Bypasses all football-api entity permission checks"
+}
+
+resource "aws_cognito_user_group" "full_access" {
+  name         = "full_access"
+  user_pool_id = aws_cognito_user_pool.staging.id
+  description  = "Resolves to all football-api *_manage permissions"
+}
+
+resource "aws_cognito_user_group" "team_manage" {
+  name         = "team_manage"
+  user_pool_id = aws_cognito_user_pool.staging.id
+  description  = "Create/delete football-api teams"
+}
+
+resource "aws_cognito_user_group" "player_manage" {
+  name         = "player_manage"
+  user_pool_id = aws_cognito_user_pool.staging.id
+  description  = "Create/delete football-api players"
+}
+
+resource "aws_cognito_user_group" "rumour_manage" {
+  name         = "rumour_manage"
+  user_pool_id = aws_cognito_user_pool.staging.id
+  description  = "Create/delete football-api rumours and rumour sources"
+}
+
 resource "aws_cognito_identity_provider" "google" {
   user_pool_id  = aws_cognito_user_pool.staging.id
   provider_name = "Google"
