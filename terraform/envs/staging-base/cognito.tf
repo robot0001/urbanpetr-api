@@ -81,11 +81,16 @@ resource "aws_cognito_user_pool_client" "admin_spa" {
     "http://localhost:3001/auth-callback",
     "https://admin.urbanpetr.home/auth-callback",
     "https://football-admin.urbanpetr.home/auth-callback",
+    # Wildcard covers every ephemeral football-admin stage env (the
+    # persistent `staging` branch env and any future per-PR
+    # football-admin-stageN) — shared across apps for stage convenience.
+    "https://football-admin-stage*.urbanpetr.com/auth-callback",
   ]
   logout_urls = [
     "http://localhost:3001",
     "https://admin.urbanpetr.home",
     "https://football-admin.urbanpetr.home",
+    "https://football-admin-stage*.urbanpetr.com",
   ]
 
   access_token_validity  = 60
