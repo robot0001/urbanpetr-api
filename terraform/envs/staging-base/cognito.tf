@@ -77,6 +77,8 @@ resource "aws_cognito_user_pool_client" "admin_spa" {
 
   supported_identity_providers = ["Google"]
 
+  depends_on = [aws_cognito_identity_provider.google]
+
   callback_urls = [
     "http://localhost:3001/auth-callback",
     "https://admin.urbanpetr.home/auth-callback",
