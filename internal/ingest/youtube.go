@@ -13,8 +13,8 @@ import (
 )
 
 type entry struct {
-	Title    string `json:"title"`
-	TitleURL string `json:"titleUrl"`
+	Title     string `json:"title"`
+	TitleURL  string `json:"titleUrl"`
 	Subtitles []struct {
 		Name string `json:"name"`
 		URL  string `json:"url"`
@@ -163,10 +163,10 @@ func ingestBatch(ctx context.Context, db *pgxpool.Pool, batch []VideoInfo) (int,
 			continue
 		}
 		seen[v.VideoID] = true
-		vidIDs      = append(vidIDs, v.VideoID)
-		types       = append(types, v.Type)
-		titles      = append(titles, v.Title)
-		channels    = append(channels, v.Channel)
+		vidIDs = append(vidIDs, v.VideoID)
+		types = append(types, v.Type)
+		titles = append(titles, v.Title)
+		channels = append(channels, v.Channel)
 		channelURLs = append(channelURLs, v.ChannelURL)
 	}
 
@@ -203,10 +203,10 @@ func ingestBatch(ctx context.Context, db *pgxpool.Pool, batch []VideoInfo) (int,
 	}
 
 	sz := len(batch)
-	intIDs     := make([]int64,     sz)
+	intIDs := make([]int64, sz)
 	watchedAts := make([]time.Time, sz)
 	for i, v := range batch {
-		intIDs[i]     = idByVidID[v.VideoID]
+		intIDs[i] = idByVidID[v.VideoID]
 		watchedAts[i] = v.WatchedAt
 	}
 

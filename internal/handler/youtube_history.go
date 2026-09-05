@@ -20,20 +20,20 @@ import (
 // -- response types --
 
 type youtubeVideoResp struct {
-	UUID            string         `json:"uuid"`
-	ID              string         `json:"id"`
-	Type            string         `json:"type"`
-	URL             string         `json:"url"`
-	Title           string         `json:"title"`
-	Channel         *string        `json:"channel"`
-	ChannelURL      *string        `json:"channel_url"`
-	ThumbnailURL    *string        `json:"thumbnail_url"`
-	Description     *string        `json:"description"`
-	Duration        *durationResp  `json:"duration"`
-	PublishedAt     *timestampResp `json:"published_at"`
-	ViewCount       *int64         `json:"view_count"`
-	LikeCount       *int64         `json:"like_count"`
-	Tags            []string       `json:"tags"`
+	UUID         string         `json:"uuid"`
+	ID           string         `json:"id"`
+	Type         string         `json:"type"`
+	URL          string         `json:"url"`
+	Title        string         `json:"title"`
+	Channel      *string        `json:"channel"`
+	ChannelURL   *string        `json:"channel_url"`
+	ThumbnailURL *string        `json:"thumbnail_url"`
+	Description  *string        `json:"description"`
+	Duration     *durationResp  `json:"duration"`
+	PublishedAt  *timestampResp `json:"published_at"`
+	ViewCount    *int64         `json:"view_count"`
+	LikeCount    *int64         `json:"like_count"`
+	Tags         []string       `json:"tags"`
 }
 
 type youtubeHistoryItemResp struct {
