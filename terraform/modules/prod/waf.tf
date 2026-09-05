@@ -93,23 +93,42 @@ resource "aws_wafv2_web_acl" "shared" {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
 
-        # Exclude the file-upload endpoint from all CommonRuleSet body-inspection
-        # rules. The ZIP binary content triggers false positives (SizeRestrictions,
-        # XSS, SQLi, RFI rules) because WAF inspects raw bytes, not the ZIP format.
-        # The endpoint is protected by JWT auth; API Gateway's 10 MB limit caps the
-        # upload size. All other paths retain full CommonRuleSet protection.
+        # Exclude file-upload endpoints from all CommonRuleSet body-inspection
+        # rules. Binary content (a ZIP, an image) triggers false positives
+        # (SizeRestrictions, XSS, SQLi, RFI rules) because WAF inspects raw
+        # bytes, not the file format. Each excluded endpoint is protected by
+        # its own auth (JWT / football-api session) and a request size cap
+        # enforced by the app itself. All other paths retain full
+        # CommonRuleSet protection.
         scope_down_statement {
           not_statement {
             statement {
-              byte_match_statement {
-                search_string         = "/v1/history/youtube/ingest"
-                positional_constraint = "EXACTLY"
-                field_to_match {
-                  uri_path {}
+              or_statement {
+                statement {
+                  byte_match_statement {
+                    search_string         = "/v1/history/youtube/ingest"
+                    positional_constraint = "EXACTLY"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
                 }
-                text_transformation {
-                  priority = 0
-                  type     = "NONE"
+                statement {
+                  byte_match_statement {
+                    search_string         = "/v1/image"
+                    positional_constraint = "EXACTLY"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
                 }
               }
             }
