@@ -28,6 +28,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Cache Go build cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-go-build-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            ${{ runner.os }}-go-build-${{ hashFiles('go.sum') }}-
+
       - name: Build Lambda binary
         run: |
           GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bootstrap ./cmd/api
