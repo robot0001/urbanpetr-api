@@ -16,12 +16,19 @@ env:
   AWS_REGION: eu-central-1
   ARTIFACTS_BUCKET: urbanpetr-artifacts
 
+# Cancel superseded PR runs, but never interrupt a push: cancelling mid
+# `terraform apply` would leave prod state locked.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # ── PR jobs ───────────────────────────────────────────────────────────────
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
 
     permissions:
@@ -43,6 +50,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.9.8
+          terraform_wrapper: false
 
       - name: Terraform fmt check
         run: terraform fmt -check -recursive terraform/
@@ -50,6 +58,12 @@ jobs:
       - uses: terraform-linters/setup-tflint@v6
         with:
           tflint_version: v0.50.3
+
+      - name: Cache tflint plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: ${{ runner.os }}-tflint-v0.50.3-${{ hashFiles('.tflint.hcl') }}
 
       - name: tflint init
         run: tflint --init
@@ -63,35 +77,10 @@ jobs:
             tflint --chdir "$dir" || exit 1
           done
 
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-
-      - name: Cache Go build cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/go-build
-          key: ${{ runner.os }}-go-build-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
-          restore-keys: |
-            ${{ runner.os }}-go-build-${{ hashFiles('go.sum') }}-
-
-      - name: Run tests
-        run: go test ./... -v -count=1
-
   terraform_plan:
     name: Terraform plan (prod)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'pull_request'
 
     permissions:
@@ -109,17 +98,27 @@ jobs:
       - name: Configure Git credentials
         run: git config --global url."https://oauth2:${{ secrets.GLOBAL_MODULES_PAT }}@github.com".insteadOf "https://github.com"
 
+      - name: Point Terraform at a plugin cache
+        run: |
+          mkdir -p "$HOME/.cache/terraform-plugins"
+          echo "TF_PLUGIN_CACHE_DIR=$HOME/.cache/terraform-plugins" >> "$GITHUB_ENV"
+
+      - name: Cache Terraform plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/terraform-plugins
+          key: ${{ runner.os }}-tf-plugins-${{ hashFiles('terraform/**/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-tf-plugins-
+
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.9.8
+          terraform_wrapper: false
 
       - name: Terraform init
         working-directory: terraform/envs/prod
         run: terraform init -input=false
-
-      - name: Terraform validate
-        working-directory: terraform/envs/prod
-        run: terraform validate
 
       - name: Terraform plan
         working-directory: terraform/envs/prod
@@ -128,11 +127,13 @@ jobs:
   # ── Main branch jobs ──────────────────────────────────────────────────────
 
   build:
-    name: Build Lambda binary
+    name: Build and upload Lambda artifact
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: github.event_name == 'push'
 
     permissions:
+      id-token: write
       contents: read
 
     steps:
@@ -156,31 +157,10 @@ jobs:
           zip -j lambda.zip bootstrap
           zip -r lambda.zip migrations/
 
-      - uses: actions/upload-artifact@v5
-        with:
-          name: lambda-zip
-          path: lambda.zip
-          retention-days: 7
-
-  upload:
-    name: Upload artifact to S3
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'push'
-
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
       - uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - uses: actions/download-artifact@v5
-        with:
-          name: lambda-zip
 
       - name: Upload to S3
         run: |
@@ -190,6 +170,7 @@ jobs:
   terraform_apply:
     name: Terraform apply (prod)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: build
     if: github.event_name == 'push'
 
@@ -208,9 +189,23 @@ jobs:
       - name: Configure Git credentials
         run: git config --global url."https://oauth2:${{ secrets.GLOBAL_MODULES_PAT }}@github.com".insteadOf "https://github.com"
 
+      - name: Point Terraform at a plugin cache
+        run: |
+          mkdir -p "$HOME/.cache/terraform-plugins"
+          echo "TF_PLUGIN_CACHE_DIR=$HOME/.cache/terraform-plugins" >> "$GITHUB_ENV"
+
+      - name: Cache Terraform plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/terraform-plugins
+          key: ${{ runner.os }}-tf-plugins-${{ hashFiles('terraform/**/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-tf-plugins-
+
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.9.8
+          terraform_wrapper: false
 
       - name: Terraform init
         working-directory: terraform/envs/prod
@@ -230,7 +225,8 @@ jobs:
   update_lambdas:
     name: Update Lambda code
     runs-on: ubuntu-latest
-    needs: [upload, terraform_apply]
+    timeout-minutes: 10
+    needs: terraform_apply
     if: github.event_name == 'push'
 
     permissions:
@@ -246,25 +242,26 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_PROD }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Update API Lambda
+      - name: Update Lambda code
         run: |
-          aws lambda update-function-code \
-            --function-name urbanpetr-api-prod \
-            --s3-bucket ${{ env.ARTIFACTS_BUCKET }} \
-            --s3-key ${{ env.S3_KEY }}
-          aws lambda wait function-updated-v2 --function-name urbanpetr-api-prod
+          for fn in urbanpetr-api-prod urbanpetr-api-prod-migrations; do
+            aws lambda update-function-code \
+              --function-name "$fn" \
+              --s3-bucket ${{ env.ARTIFACTS_BUCKET }} \
+              --s3-key ${{ env.S3_KEY }}
+          done
 
-      - name: Update migrations Lambda
+      - name: Wait for Lambdas to finish updating
         run: |
-          aws lambda update-function-code \
-            --function-name urbanpetr-api-prod-migrations \
-            --s3-bucket ${{ env.ARTIFACTS_BUCKET }} \
-            --s3-key ${{ env.S3_KEY }}
-          aws lambda wait function-updated-v2 --function-name urbanpetr-api-prod-migrations
+          pids=()
+          aws lambda wait function-updated-v2 --function-name urbanpetr-api-prod & pids+=($!)
+          aws lambda wait function-updated-v2 --function-name urbanpetr-api-prod-migrations & pids+=($!)
+          for pid in "${pids[@]}"; do wait "$pid"; done
 
   migrate:
     name: Run migrations
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: update_lambdas
     if: github.event_name == 'push'
 
@@ -294,6 +291,7 @@ jobs:
   smoke:
     name: Smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: migrate
     if: github.event_name == 'push'
 

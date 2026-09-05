@@ -8,6 +8,12 @@ env:
   AWS_REGION: eu-central-1
   ARTIFACTS_BUCKET: urbanpetr-artifacts-staging
 
+# Serialize (don't cancel) events for the same PR — two overlapping
+# `terraform apply`/`destroy` runs against the same workspace can race each
+# other or leave state locked; cancelling mid-run risks the same thing.
+concurrency:
+  group: pr-env-${{ github.event.number }}
+
 jobs:
   provision:
     name: Provision PR env
@@ -15,6 +21,7 @@ jobs:
       github.event.action != 'closed' &&
       contains(github.event.pull_request.labels.*.name, 'stage')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     permissions:
       id-token: write
@@ -61,9 +68,23 @@ jobs:
           aws s3 cp lambda.zip \
             s3://${{ env.ARTIFACTS_BUCKET }}/urbanpetr-api/pr-${{ github.event.number }}/${{ github.sha }}.zip
 
+      - name: Point Terraform at a plugin cache
+        run: |
+          mkdir -p "$HOME/.cache/terraform-plugins"
+          echo "TF_PLUGIN_CACHE_DIR=$HOME/.cache/terraform-plugins" >> "$GITHUB_ENV"
+
+      - name: Cache Terraform plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/terraform-plugins
+          key: ${{ runner.os }}-tf-plugins-${{ hashFiles('terraform/**/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-tf-plugins-
+
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.9.8
+          terraform_wrapper: false
 
       - name: Terraform init (staging-base)
         working-directory: terraform/envs/staging-base
@@ -183,6 +204,7 @@ jobs:
       github.event.action == 'closed' ||
       (github.event.action == 'unlabeled' && github.event.label.name == 'stage')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     permissions:
       id-token: write
@@ -206,9 +228,25 @@ jobs:
             echo "exists=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Point Terraform at a plugin cache
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          mkdir -p "$HOME/.cache/terraform-plugins"
+          echo "TF_PLUGIN_CACHE_DIR=$HOME/.cache/terraform-plugins" >> "$GITHUB_ENV"
+
+      - name: Cache Terraform plugins
+        if: steps.check.outputs.exists == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/terraform-plugins
+          key: ${{ runner.os }}-tf-plugins-${{ hashFiles('terraform/**/.terraform.lock.hcl') }}
+          restore-keys: |
+            ${{ runner.os }}-tf-plugins-
+
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.9.8
+          terraform_wrapper: false
 
       - name: Terraform init
         if: steps.check.outputs.exists == 'true'
