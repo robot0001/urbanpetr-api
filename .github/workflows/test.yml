@@ -10,6 +10,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     permissions:
       contents: read
@@ -30,4 +31,4 @@ jobs:
             ${{ runner.os }}-go-build-${{ hashFiles('go.sum') }}-
 
       - name: Run tests
-        run: go test ./... -v -count=1
+        run: go test ./... -count=1
