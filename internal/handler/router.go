@@ -45,13 +45,13 @@ func NewRouter(log *slog.Logger, db *pgxpool.Pool, yt *youtube.Client, jwtMiddle
 
 	r.Group(func(r chi.Router) {
 		r.Use(jwtMiddleware.Require("urbanpetr_admin"))
-		r.Get("/v1/history/youtube/all",                ListAllYoutubeHistory(log, db))
-		r.Get("/v1/history/youtube/{uuid}",             GetYoutubeHistory(log, db))
-		r.Post("/v1/history/youtube/ingest",             IngestYoutubeHistory(log, db, yt))
-		r.Post("/v1/history/youtube/{uuid}/activate",   ActivateYoutubeHistory(log, db))
+		r.Get("/v1/history/youtube/all", ListAllYoutubeHistory(log, db))
+		r.Get("/v1/history/youtube/{uuid}", GetYoutubeHistory(log, db))
+		r.Post("/v1/history/youtube/ingest", IngestYoutubeHistory(log, db, yt))
+		r.Post("/v1/history/youtube/{uuid}/activate", ActivateYoutubeHistory(log, db))
 		r.Post("/v1/history/youtube/{uuid}/deactivate", DeactivateYoutubeHistory(log, db))
-		r.Patch("/v1/history/youtube/{uuid}",            UpdateYoutubeHistoryDetails(log, db))
-		r.Post("/v1/history/youtube/{uuid}/enrich",     EnrichYoutubeVideo(log, db, yt))
+		r.Patch("/v1/history/youtube/{uuid}", UpdateYoutubeHistoryDetails(log, db))
+		r.Post("/v1/history/youtube/{uuid}/enrich", EnrichYoutubeVideo(log, db, yt))
 	})
 
 	return r

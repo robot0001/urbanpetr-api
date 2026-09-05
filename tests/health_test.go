@@ -54,8 +54,8 @@ func TestHealthHandlerCORSAllowed(t *testing.T) {
 func TestHealthHandlerCORSBlocked(t *testing.T) {
 	origins := []string{
 		"https://example.com",
-		"http://urbanpetr.com",            // wrong scheme
-		"https://urbanpetr.com.evil.com",  // subdomain spoofing
+		"http://urbanpetr.com",           // wrong scheme
+		"https://urbanpetr.com.evil.com", // subdomain spoofing
 	}
 	for _, origin := range origins {
 		t.Run(origin, func(t *testing.T) {

@@ -18,8 +18,8 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 }
 
 type JWTMiddleware struct {
-	issuer  string
-	jwksfn  keyfunc.Keyfunc
+	issuer string
+	jwksfn keyfunc.Keyfunc
 }
 
 type cognitoClaims struct {
