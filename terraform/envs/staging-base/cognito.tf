@@ -34,10 +34,31 @@ resource "aws_cognito_user_pool_domain" "staging" {
   user_pool_id = aws_cognito_user_pool.staging.id
 }
 
+# This pool is shared by every project's staging and PR environments, and
+# authorization is by group membership. urbanpetr_admin is the baseline every
+# API requires before it will mint a session at all; the two below are
+# additive roles that football-api gates its write and user-management routes
+# on (COGNITO_WRITE_GROUP / COGNITO_SUPERADMIN_GROUP — see football-api's
+# terraform/modules/staging). They mirror football_admin_write and
+# football_superadmin in the prod football-admin pool, under this pool's own
+# naming prefix, so a staging environment exercises the same role logic prod
+# runs rather than silently skipping it.
 resource "aws_cognito_user_group" "admin" {
   name         = "urbanpetr_admin"
   user_pool_id = aws_cognito_user_pool.staging.id
-  description  = "Full access to all API endpoints"
+  description  = "Baseline access to all API endpoints. Read-only where a project gates writes separately."
+}
+
+resource "aws_cognito_user_group" "admin_write" {
+  name         = "urbanpetr_admin_write"
+  user_pool_id = aws_cognito_user_pool.staging.id
+  description  = "Create, update and delete content. Additive to urbanpetr_admin."
+}
+
+resource "aws_cognito_user_group" "superadmin" {
+  name         = "urbanpetr_superadmin"
+  user_pool_id = aws_cognito_user_pool.staging.id
+  description  = "Issue invites and manage user access. Additive to urbanpetr_admin."
 }
 
 resource "aws_cognito_identity_provider" "google" {
@@ -120,4 +141,14 @@ output "cognito_client_id" {
 output "cognito_hosted_ui_domain" {
   value       = "${aws_cognito_user_pool_domain.staging.domain}.auth.eu-central-1.amazoncognito.com"
   description = "Staging hosted UI domain — use as NUXT_PUBLIC_COGNITO_DOMAIN in local .env."
+}
+
+output "cognito_group_write" {
+  value       = aws_cognito_user_group.admin_write.name
+  description = "Additive group granting content write access, for consumers' COGNITO_WRITE_GROUP."
+}
+
+output "cognito_group_superadmin" {
+  value       = aws_cognito_user_group.superadmin.name
+  description = "Additive group granting user management, for consumers' COGNITO_SUPERADMIN_GROUP."
 }
