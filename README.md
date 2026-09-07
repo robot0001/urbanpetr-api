@@ -81,7 +81,7 @@ Remove the `stage` label or close the PR to tear everything down. The shared Lam
 Prod infrastructure lives in AWS Account A (`eu-central-1`), staging in Account B. Key resources:
 
 - **CloudFront** — `api.urbanpetr.com` terminates at a CloudFront distribution (`PriceClass_100`); origin is the API Gateway raw invoke URL
-- **WAF** — shared `CLOUDFRONT`-scope WebACL (us-east-1) attached to the API CloudFront distribution: kill-switch block rule (priority 0, empty by default), IP reputation list, common rule set, per-IP rate limit
+- **WAF** — shared `CLOUDFRONT`-scope WebACL (us-east-1) attached to the API CloudFront distribution: kill-switch block rule (priority 0, empty by default), IP reputation list, common rule set, known bad inputs, per-IP rate limit (1000 req / 5 min), and a tighter per-IP rate limit (100 req / 5 min) scoped to football-api's auth routes (`/v1/session`, invite redemption)
 - **Origin secret** — CloudFront injects `X-Origin-Secret` on every origin request; the Lambda middleware rejects any request that arrives without the correct value, preventing API Gateway bypass
 - **API Gateway** — HTTP API v2, no custom domain (CloudFront handles TLS termination for `api.urbanpetr.com`); stage-level burst and rate throttling
 - **Lambda** — `provided.al2023` runtime, ARM64, VPC-attached
