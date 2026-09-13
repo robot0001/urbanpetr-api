@@ -130,6 +130,21 @@ resource "aws_wafv2_web_acl" "shared" {
                     }
                   }
                 }
+                # football-api's image import for its backfill jobs: one
+                # fixed path for teams and players, so one exclusion
+                statement {
+                  byte_match_statement {
+                    search_string         = "/v1/import/image"
+                    positional_constraint = "EXACTLY"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
               }
             }
           }
@@ -200,6 +215,21 @@ resource "aws_wafv2_web_acl" "shared" {
                 statement {
                   byte_match_statement {
                     search_string         = "/v1/image"
+                    positional_constraint = "EXACTLY"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+                # football-api's image import for its backfill jobs: one
+                # fixed path for teams and players, so one exclusion
+                statement {
+                  byte_match_statement {
+                    search_string         = "/v1/import/image"
                     positional_constraint = "EXACTLY"
                     field_to_match {
                       uri_path {}
