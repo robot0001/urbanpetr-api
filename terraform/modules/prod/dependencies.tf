@@ -33,3 +33,30 @@ data "terraform_remote_state" "admin" {
     region = "eu-central-1"
   }
 }
+
+data "terraform_remote_state" "football_api" {
+  backend = "s3"
+  config = {
+    bucket = "urbanpetr-tf-state"
+    key    = "football-api/prod/terraform.tfstate"
+    region = "eu-central-1"
+  }
+}
+
+data "terraform_remote_state" "football_web" {
+  backend = "s3"
+  config = {
+    bucket = "urbanpetr-tf-state"
+    key    = "football/prod/terraform.tfstate"
+    region = "eu-central-1"
+  }
+}
+
+data "terraform_remote_state" "football_admin" {
+  backend = "s3"
+  config = {
+    bucket = "urbanpetr-tf-state"
+    key    = "football_admin/prod/terraform.tfstate"
+    region = "eu-central-1"
+  }
+}

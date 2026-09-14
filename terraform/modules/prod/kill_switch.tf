@@ -1,5 +1,24 @@
 data "aws_caller_identity" "current" {}
 
+# Everything the kill switch takes down. football-api shares the WAF and the
+# account, so a spike on either API kills both projects.
+locals {
+  kill_switch_lambda_names = [
+    "urbanpetr-api-prod",
+    "football-api-prod",
+  ]
+
+  kill_switch_cf_dist_ids = [
+    aws_cloudfront_distribution.api.id,
+    data.terraform_remote_state.website.outputs.cloudfront_distribution_id,
+    data.terraform_remote_state.admin.outputs.cloudfront_distribution_id,
+    data.terraform_remote_state.football_api.outputs.api_cloudfront_distribution_id,
+    data.terraform_remote_state.football_api.outputs.images_cloudfront_distribution_id,
+    data.terraform_remote_state.football_web.outputs.cloudfront_distribution_id,
+    data.terraform_remote_state.football_admin.outputs.cloudfront_distribution_id,
+  ]
+}
+
 data "archive_file" "kill_switch" {
   type        = "zip"
   source_file = "${path.module}/../../../lambda/kill_switch/main.py"
@@ -20,10 +39,13 @@ resource "aws_iam_role" "kill_switch_lambda" {
 
 data "aws_iam_policy_document" "kill_switch_lambda" {
   statement {
-    sid       = "ThrottleApiLambda"
-    effect    = "Allow"
-    actions   = ["lambda:PutFunctionConcurrency"]
-    resources = ["arn:aws:lambda:eu-central-1:${data.aws_caller_identity.current.account_id}:function:urbanpetr-api-prod"]
+    sid     = "ThrottleApiLambdas"
+    effect  = "Allow"
+    actions = ["lambda:PutFunctionConcurrency"]
+    resources = [
+      for name in local.kill_switch_lambda_names :
+      "arn:aws:lambda:eu-central-1:${data.aws_caller_identity.current.account_id}:function:${name}"
+    ]
   }
 
   statement {
@@ -41,9 +63,8 @@ data "aws_iam_policy_document" "kill_switch_lambda" {
     effect  = "Allow"
     actions = ["cloudfront:GetDistributionConfig", "cloudfront:UpdateDistribution"]
     resources = [
-      "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/${aws_cloudfront_distribution.api.id}",
-      "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/${data.terraform_remote_state.website.outputs.cloudfront_distribution_id}",
-      "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/${data.terraform_remote_state.admin.outputs.cloudfront_distribution_id}",
+      for id in local.kill_switch_cf_dist_ids :
+      "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/${id}"
     ]
   }
 
@@ -68,18 +89,16 @@ resource "aws_lambda_function" "kill_switch" {
   handler          = "main.handler"
   filename         = data.archive_file.kill_switch.output_path
   source_code_hash = data.archive_file.kill_switch.output_base64sha256
-  timeout          = 30
+  timeout          = 90
 
   environment {
     variables = {
-      API_LAMBDA_NAME    = "urbanpetr-api-prod"
+      LAMBDA_NAMES       = join(",", local.kill_switch_lambda_names)
       WAF_IP_SET_ID      = aws_wafv2_ip_set.kill_switch.id
       WAF_IP_SET_NAME    = aws_wafv2_ip_set.kill_switch.name
       WAF_IP_SET_V6_ID   = aws_wafv2_ip_set.kill_switch_v6.id
       WAF_IP_SET_V6_NAME = aws_wafv2_ip_set.kill_switch_v6.name
-      API_CF_DIST_ID     = aws_cloudfront_distribution.api.id
-      WEBSITE_CF_DIST_ID = data.terraform_remote_state.website.outputs.cloudfront_distribution_id
-      ADMIN_CF_DIST_ID   = data.terraform_remote_state.admin.outputs.cloudfront_distribution_id
+      CF_DIST_IDS        = join(",", local.kill_switch_cf_dist_ids)
     }
   }
 
