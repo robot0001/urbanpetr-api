@@ -3,32 +3,47 @@ import os
 
 import boto3
 
-API_LAMBDA_NAME = os.environ["API_LAMBDA_NAME"]
+LAMBDA_NAMES = os.environ["LAMBDA_NAMES"].split(",")
 WAF_IP_SET_ID = os.environ["WAF_IP_SET_ID"]
 WAF_IP_SET_NAME = os.environ["WAF_IP_SET_NAME"]
 WAF_IP_SET_V6_ID = os.environ["WAF_IP_SET_V6_ID"]
 WAF_IP_SET_V6_NAME = os.environ["WAF_IP_SET_V6_NAME"]
-API_CF_DIST_ID = os.environ["API_CF_DIST_ID"]
-WEBSITE_CF_DIST_ID = os.environ["WEBSITE_CF_DIST_ID"]
-ADMIN_CF_DIST_ID = os.environ["ADMIN_CF_DIST_ID"]
+CF_DIST_IDS = os.environ["CF_DIST_IDS"].split(",")
 
 
 def handler(event, context):
     print(f"Kill switch triggered. Event: {json.dumps(event)}")
 
-    _throttle_api_lambda()
-    _block_all_waf()
-    _disable_cloudfront()
+    # Every target is attempted even if an earlier one fails — a missing
+    # function or a distribution mid-deploy must not leave the rest running.
+    failures = []
+    for name in LAMBDA_NAMES:
+        _attempt(failures, f"Lambda {name}", _throttle_lambda, name)
+    _attempt(failures, "WAF", _block_all_waf)
+    for dist_id in CF_DIST_IDS:
+        _attempt(failures, f"CloudFront {dist_id}", _disable_cloudfront, dist_id)
+
+    if failures:
+        # Raising makes SNS retry the async invoke; every step is idempotent.
+        raise RuntimeError(f"Kill switch incomplete, failed: {failures}")
 
     return {"status": "killed"}
 
 
-def _throttle_api_lambda():
+def _attempt(failures, label, fn, *args):
+    try:
+        fn(*args)
+    except Exception as e:
+        print(f"{label}: FAILED — {e}")
+        failures.append(label)
+
+
+def _throttle_lambda(name):
     boto3.client("lambda", region_name="eu-central-1").put_function_concurrency(
-        FunctionName=API_LAMBDA_NAME,
+        FunctionName=name,
         ReservedConcurrentExecutions=0,
     )
-    print(f"Lambda {API_LAMBDA_NAME}: concurrency set to 0")
+    print(f"Lambda {name}: concurrency set to 0")
 
 
 def _block_all_waf():
@@ -55,11 +70,13 @@ def _block_all_waf():
     print(f"WAF IPv6 set {WAF_IP_SET_V6_NAME}: blocked all")
 
 
-def _disable_cloudfront():
+def _disable_cloudfront(dist_id):
     cf = boto3.client("cloudfront")
-    for dist_id in [API_CF_DIST_ID, WEBSITE_CF_DIST_ID, ADMIN_CF_DIST_ID]:
-        r = cf.get_distribution_config(Id=dist_id)
-        config = r["DistributionConfig"]
-        config["Enabled"] = False
-        cf.update_distribution(Id=dist_id, DistributionConfig=config, IfMatch=r["ETag"])
-        print(f"CloudFront {dist_id}: disabled (propagating ~15 min)")
+    r = cf.get_distribution_config(Id=dist_id)
+    config = r["DistributionConfig"]
+    if not config["Enabled"]:
+        print(f"CloudFront {dist_id}: already disabled")
+        return
+    config["Enabled"] = False
+    cf.update_distribution(Id=dist_id, DistributionConfig=config, IfMatch=r["ETag"])
+    print(f"CloudFront {dist_id}: disabled (propagating ~15 min)")

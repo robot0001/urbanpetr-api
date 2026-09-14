@@ -94,7 +94,7 @@ Platform outputs (VPC, RDS endpoint, security groups) are consumed via `terrafor
 
 ## DDoS protection & kill switch
 
-A CloudWatch alarm on Lambda invocations automatically triggers `urbanpetr-kill-switch` (Python Lambda) via SNS when a traffic spike is detected. The Lambda executes a three-step kill sequence: throttle the API Lambda to zero concurrency (instant), block all IPs in the WAF (seconds), then disable all three CloudFront distributions (~15 min propagation). Total detection-to-kill latency is under 2 minutes.
+CloudWatch alarms on the invocations of `urbanpetr-api-prod` (>1000/min) and `football-api-prod` (>1500/min), each for 2 of 3 minutes, trigger `urbanpetr-kill-switch` (Python Lambda) via SNS. Either alarm kills both projects: throttle both API Lambdas to zero concurrency (instant), block all IPs in the shared WAF (seconds), then disable all seven CloudFront distributions — urbanpetr website, admin and API; football web, admin, API and images (~15 min propagation). Total detection-to-kill latency is under 4 minutes.
 
 For full details — architecture, WAF rule set, kill sequence, restoration procedure, and where every component lives — see the [DDoS Protection & Billing Safety](https://github.com/robot0001/urbanpetr-platform/blob/main/docs/ddos-protection.md) reference doc.
 

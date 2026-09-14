@@ -46,25 +46,49 @@ resource "aws_sns_topic" "kill_switch" {
   tags = local.common_tags
 }
 
-# Fires when Lambda invocations exceed 500/min for a single 60-second period.
-# Normal peak is 50–200 req/min; 500 indicates a clear traffic spike.
-# The kill-switch Lambda subscribes to this topic (wired in a later PR).
+# One alarm per public API Lambda; any of them fires the kill switch, which
+# takes down everything (both APIs, all CloudFront distributions, shared WAF).
+#
+# Thresholds sit ~2x above the highest legitimate minute seen in 2026-09
+# (urbanpetr-api 547/min, football-api 719/min from bot runs), and must hold
+# for 2 of 3 minutes so one bursty minute can't kill prod.
+#
+# The 2-of-3 window also covers late-arriving Lambda metrics: the previous
+# single-period alarm (500/min, 1 of 1) never left OK even when urbanpetr-api
+# hit 547/min on 2026-09-03.
+locals {
+  kill_switch_invocation_alarms = {
+    urbanpetr-api = { function_name = "urbanpetr-api-prod", threshold = 1000 }
+    football-api  = { function_name = "football-api-prod", threshold = 1500 }
+  }
+}
+
 resource "aws_cloudwatch_metric_alarm" "api_invocations_spike" {
-  alarm_name          = "urbanpetr-api-invocations-spike"
+  for_each = local.kill_switch_invocation_alarms
+
+  alarm_name          = "${each.key}-invocations-spike"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
+  evaluation_periods  = 3
+  datapoints_to_alarm = 2
   metric_name         = "Invocations"
   namespace           = "AWS/Lambda"
   period              = 60
   statistic           = "Sum"
-  threshold           = 500
+  threshold           = each.value.threshold
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    FunctionName = "urbanpetr-api-prod"
+    FunctionName = each.value.function_name
   }
 
   alarm_actions = [aws_sns_topic.kill_switch.arn]
 
   tags = local.common_tags
+}
+
+# Keeps the existing urbanpetr-api alarm in place instead of a destroy + create
+# of the same alarm name, which can race and leave no alarm at all.
+moved {
+  from = aws_cloudwatch_metric_alarm.api_invocations_spike
+  to   = aws_cloudwatch_metric_alarm.api_invocations_spike["urbanpetr-api"]
 }
