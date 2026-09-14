@@ -371,6 +371,78 @@ resource "aws_wafv2_web_acl" "shared" {
     }
   }
 
+  # A ceiling for football-api's anonymous read surface, /v1/public/*, which
+  # is the only place on anything behind this ACL that an arbitrary bot is
+  # invited to call at volume. Everything else is either a static site or
+  # needs a session.
+  #
+  # Shipped as count{} rather than block{}, on purpose. The site it serves
+  # went public days ago, so there is no traffic history, and the number that
+  # decides whether 500 is generous or hostile is not the one a careful reader
+  # spends — a cold page load on the tactical page is ten requests and a
+  # revisit is zero, because the front end caches per club in module state —
+  # but the one a *carrier NAT* spends, where dozens of readers share an
+  # egress IP. Guessing that with no data is how a threshold ends up paging
+  # somebody at 2am.
+  #
+  # Counting costs nothing and produces exactly the missing number: the
+  # PublicReadRateLimit metric is a count of what this rule *would* have
+  # blocked. IPRateLimit above still blocks at 1000/5min, so the surface is
+  # not unprotected while this watches. Turning it on later is one word.
+  #
+  # Caching does not make this redundant, which is the part worth
+  # remembering. football-api now caches /v1/public/* at its own CloudFront
+  # distribution, so repeat requests never reach the origin — but a scraper
+  # walking ?page=1..N misses that cache on every request, and this is what
+  # sees it.
+  #
+  # Scoped by URI prefix only, for the reason AuthRateLimit gives: this ACL is
+  # shared, the other sites behind it serve no such path, and a Host match
+  # would couple this file to football-api's domain names and stop matching
+  # silently the day one of them changes.
+  rule {
+    name     = "PublicReadRateLimit"
+    priority = 6
+    action {
+      count {}
+    }
+    statement {
+      rate_based_statement {
+        limit                 = 500
+        aggregate_key_type    = "IP"
+        evaluation_window_sec = 300
+
+        scope_down_statement {
+          byte_match_statement {
+            search_string         = "/v1/public/"
+            positional_constraint = "STARTS_WITH"
+            field_to_match {
+              uri_path {}
+            }
+            # URL_DECODE then LOWERCASE, as AuthRateLimit does and for the
+            # same reason: Go routes on the percent-decoded path, so
+            # "/v1/%70ublic/team" would reach the handler while an
+            # untransformed byte match missed it — and a miss here means no
+            # limit at all.
+            text_transformation {
+              priority = 0
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 1
+              type     = "LOWERCASE"
+            }
+          }
+        }
+      }
+    }
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "PublicReadRateLimit"
+      sampled_requests_enabled   = true
+    }
+  }
+
   visibility_config {
     cloudwatch_metrics_enabled = true
     metric_name                = "urbanpetr-shared-waf"
