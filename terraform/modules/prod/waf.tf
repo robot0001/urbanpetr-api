@@ -145,6 +145,40 @@ resource "aws_wafv2_web_acl" "shared" {
                     }
                   }
                 }
+                # football-api's crest placeholder approval: an SVG and a PNG
+                # in one multipart body, behind a session with team:write. The
+                # team uuid is in the path, so a prefix and a suffix rather
+                # than an exact match.
+                statement {
+                  and_statement {
+                    statement {
+                      byte_match_statement {
+                        search_string         = "/v1/team/"
+                        positional_constraint = "STARTS_WITH"
+                        field_to_match {
+                          uri_path {}
+                        }
+                        text_transformation {
+                          priority = 0
+                          type     = "NONE"
+                        }
+                      }
+                    }
+                    statement {
+                      byte_match_statement {
+                        search_string         = "/crest_design/approve"
+                        positional_constraint = "ENDS_WITH"
+                        field_to_match {
+                          uri_path {}
+                        }
+                        text_transformation {
+                          priority = 0
+                          type     = "NONE"
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -237,6 +271,40 @@ resource "aws_wafv2_web_acl" "shared" {
                     text_transformation {
                       priority = 0
                       type     = "NONE"
+                    }
+                  }
+                }
+                # football-api's crest placeholder approval: an SVG and a PNG
+                # in one multipart body, behind a session with team:write. The
+                # team uuid is in the path, so a prefix and a suffix rather
+                # than an exact match.
+                statement {
+                  and_statement {
+                    statement {
+                      byte_match_statement {
+                        search_string         = "/v1/team/"
+                        positional_constraint = "STARTS_WITH"
+                        field_to_match {
+                          uri_path {}
+                        }
+                        text_transformation {
+                          priority = 0
+                          type     = "NONE"
+                        }
+                      }
+                    }
+                    statement {
+                      byte_match_statement {
+                        search_string         = "/crest_design/approve"
+                        positional_constraint = "ENDS_WITH"
+                        field_to_match {
+                          uri_path {}
+                        }
+                        text_transformation {
+                          priority = 0
+                          type     = "NONE"
+                        }
+                      }
                     }
                   }
                 }
