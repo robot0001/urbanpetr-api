@@ -145,6 +145,28 @@ resource "aws_wafv2_web_acl" "shared" {
                     }
                   }
                 }
+                # football-api's whole import surface: its backfill jobs post
+                # batches (a hundred proposals with their evidence) well over
+                # SizeRestrictions_BODY's 8 KB, and read candidates with query
+                # strings over SizeRestrictions_QUERYSTRING's 2 KB. Every route
+                # there is behind a job's API key; football-api caps the body
+                # at 1 MB itself (importBodyLimit) and validates every field.
+                # KnownBadInputs, the rate limits and the kill switch still
+                # apply. The /v1/import/image entry above is now covered by
+                # this one too, and stays so the two can be read apart.
+                statement {
+                  byte_match_statement {
+                    search_string         = "/v1/import/"
+                    positional_constraint = "STARTS_WITH"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
                 # football-api's crest placeholder approval: an SVG and a PNG
                 # in one multipart body, behind a session with team:write. The
                 # team uuid sits in the middle of the path
