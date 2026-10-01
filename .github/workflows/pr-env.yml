@@ -21,7 +21,9 @@ jobs:
       github.event.action != 'closed' &&
       contains(github.event.pull_request.labels.*.name, 'stage')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 30, not 20: a staging DB caught mid-stop has to finish stopping and
+    # boot again (~10 min) before migrations can run.
+    timeout-minutes: 30
 
     permissions:
       id-token: write
@@ -55,6 +57,27 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_STAGING }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # The staging DB is stopped while no PR env exists
+      # (staging-db-idle-stop.yml). Start it now so it boots while Terraform
+      # runs; "Wait for the staging DB" below blocks only before migrations.
+      - name: Start the staging DB
+        run: |
+          set -euo pipefail
+          db=urbanpetr-staging
+          status=$(aws rds describe-db-instances --db-instance-identifier "$db" \
+            --query 'DBInstances[0].DBInstanceStatus' --output text)
+          for _ in $(seq 40); do
+            [ "$status" = stopping ] || break
+            sleep 15
+            status=$(aws rds describe-db-instances --db-instance-identifier "$db" \
+              --query 'DBInstances[0].DBInstanceStatus' --output text)
+          done
+          echo "Staging DB is $status."
+          if [ "$status" = stopped ]; then
+            aws rds start-db-instance --db-instance-identifier "$db" \
+              --query 'DBInstance.DBInstanceStatus' --output text
+          fi
 
       - name: Ensure placeholder artifact exists
         run: |
@@ -122,6 +145,9 @@ jobs:
               --s3-key "$S3_KEY"
             aws lambda wait function-updated-v2 --function-name "$fn"
           done
+
+      - name: Wait for the staging DB
+        run: aws rds wait db-instance-available --db-instance-identifier urbanpetr-staging
 
       - name: Run migrations
         run: |
