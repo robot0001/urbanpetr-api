@@ -1,0 +1,71 @@
+name: Staging DB idle stop
+
+# The staging DB (urbanpetr-staging) is only used by PR envs - football-api's
+# and this repo's, created by the `stage` label - so it is stopped while none
+# exists and pr-env.yml starts it again. Stopping is reversible and never
+# touches data; a PR env that finds it stopped waits a few minutes for it.
+#
+# RDS starts a stopped instance by itself after 7 days, so this runs every
+# hour rather than once after the last PR env goes away: whichever reason the
+# DB is up without a PR env, the next run stops it.
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+env:
+  AWS_REGION: eu-central-1
+  DB_INSTANCE: urbanpetr-staging
+
+concurrency:
+  group: staging-db-idle-stop
+
+jobs:
+  stop-if-idle:
+    name: Stop the staging DB if no PR env uses it
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Stop the DB when idle
+        run: |
+          set -euo pipefail
+          status=$(aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE" \
+            --query 'DBInstances[0].DBInstanceStatus' --output text)
+          echo "Staging DB is $status."
+          if [ "$status" != available ]; then
+            echo "Nothing to do: only an available instance can be stopped."
+            exit 0
+          fi
+
+          # A PR env is a set of Lambdas named <repo>-staging-<PR number>.
+          envs=$(aws lambda list-functions --query 'Functions[].FunctionName' --output text \
+            | tr '\t' '\n' | grep -E '^(football-api|urbanpetr-api)-staging-[0-9]+$' || true)
+          if [ -n "$envs" ]; then
+            echo "Kept running for PR envs:"
+            echo "$envs"
+            exit 0
+          fi
+
+          # pr-env.yml starts the DB before its Lambdas exist, so a start in the
+          # last hour means a PR env is probably on its way up.
+          starts=$(aws rds describe-events --source-type db-instance --source-identifier "$DB_INSTANCE" \
+            --duration 60 --query "length(Events[?contains(Message, 'start')])" --output text)
+          if [ "$starts" != 0 ]; then
+            echo "Kept running: started within the last hour."
+            exit 0
+          fi
+
+          aws rds stop-db-instance --db-instance-identifier "$DB_INSTANCE" \
+            --query 'DBInstance.DBInstanceStatus' --output text
+          echo "Stopped: no PR env uses the staging DB."
